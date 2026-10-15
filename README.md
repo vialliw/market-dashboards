@@ -4,7 +4,7 @@ Interactive stock volume-profile dashboards in Python — Plotly candlesticks ov
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-**Live charts:** https://vialliw.github.io/volume-profile-visualizer/ — updated hourly during US market hours (Mon–Fri 09:30–16:00 ET) via GitHub Actions.
+**Live charts:** https://vialliw.github.io/market-dashboards/ — updated hourly during US market hours (Mon–Fri 09:30–16:00 ET) via GitHub Actions.
 
 ## Features
 
@@ -48,8 +48,8 @@ python VolumeProfileVisualizer.py --market-hours -o docs # skip if US market is 
 A GitHub Actions workflow (`.github/workflows/update-charts.yml`) regenerates the charts hourly at :30, Monday–Friday, covering the US trading session year-round (the `--market-hours` flag skips off-hours runs), then commits the results to `docs/`. With GitHub Pages enabled on `main` → `/docs`, the charts are live at:
 
 ```
-https://vialliw.github.io/volume-profile-visualizer/
-https://vialliw.github.io/volume-profile-visualizer/SPY_VolumeProfile_6M.html
+https://vialliw.github.io/market-dashboards/
+https://vialliw.github.io/market-dashboards/SPY_VolumeProfile_6M.html
 ```
 
 Market holidays and early-close days still run (harmless — yfinance returns the latest available bars).
