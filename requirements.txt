@@ -2,3 +2,5 @@ yfinance>=0.2
 plotly>=5
 pandas>=2
 numpy>=1.26
+scipy>=1.10
+pytz

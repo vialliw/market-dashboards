@@ -29,7 +29,15 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Generate charts (retry up to 3x for Yahoo throttling)
+      - name: Generate GEX dashboards (retry up to 3x for Yahoo throttling)
+        run: |
+          for i in 1 2 3; do
+            python GexDashboard.py --market-hours -o docs && exit 0
+            sleep 60
+          done
+          exit 1
+
+      - name: Generate volume profile charts (retry up to 3x for Yahoo throttling)
         run: |
           for i in 1 2 3; do
             python VolumeProfileVisualizer.py --market-hours -o docs && exit 0
