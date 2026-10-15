@@ -85,6 +85,13 @@ messages = [
 
 Packets are published alongside the dashboards, e.g. https://vialliw.github.io/market-dashboards/SPY_ai_packet.json
 
+**Sample outputs:** dated, one-time illustrations of the expected analysis format — not current analysis:
+
+- [`examples/TSM_Gamma_Dealer_Positioning_Analysis_2026-10-15_by_Claude.md`](examples/TSM_Gamma_Dealer_Positioning_Analysis_2026-10-15_by_Claude.md)
+- [`examples/TSM_Gamma_Dealer_Positioning_Analysis_2026-10-15_by_GPT.md`](examples/TSM_Gamma_Dealer_Positioning_Analysis_2026-10-15_by_GPT.md)
+
+> **Known limitation:** some per-expiry `gamma_flip`/`max_pain` values are artifacts when the option chain has no clean sign crossing near spot, and deep-wing strikes can carry stale IVs (300%+). Both sample reports flag this correctly — treat those fields as advisory. Tracked in the repo's issue tracker.
+
 ## Automation
 
 A GitHub Actions workflow (`.github/workflows/update-charts.yml`) regenerates both dashboard types hourly at :30, Monday–Friday, covering the US trading session year-round (the `--market-hours` flag skips off-hours runs), then commits the results to `docs/`. With GitHub Pages enabled on `main` → `/docs`, the charts are live at:
