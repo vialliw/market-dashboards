@@ -1,0 +1,46 @@
+name: Update volume profile charts
+
+on:
+  schedule:
+    # Hourly at :30, Mon-Fri, 13:30-21:30 UTC — covers 09:30-16:00 ET
+    # in both EDT (UTC-4) and EST (UTC-5); --market-hours skips off-hours.
+    - cron: "30 13-21 * * 1-5"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: volume-charts
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    env:
+      TZ: America/New_York
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Generate charts (retry up to 3x for Yahoo throttling)
+        run: |
+          for i in 1 2 3; do
+            python VolumeProfileVisualizer.py --market-hours -o docs && exit 0
+            sleep 60
+          done
+          exit 1
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs
+          git diff --staged --quiet || git commit -m "chore: update volume profile charts"
+          git push

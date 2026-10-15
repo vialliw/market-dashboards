@@ -2,14 +2,55 @@ import yfinance as yf
 import plotly.graph_objects as go
 import pandas as pd
 from typing import Optional, Dict, Any, List
-from datetime import datetime
+from datetime import datetime, time
+from zoneinfo import ZoneInfo
+import argparse
 import numpy as np
 import os
-import sys
 import json
 
 def get_filename(ticker, no_of_months):
     return f"{ticker}_VolumeProfile_{no_of_months}M.html"
+
+def market_is_open() -> bool:
+    """True if the US equity market is open right now (Mon-Fri 09:30-16:00 ET)."""
+    now = datetime.now(ZoneInfo("America/New_York"))
+    return now.weekday() < 5 and time(9, 30) <= now.time() <= time(16, 0)
+
+def write_index(output_folder: str, saved_files: List[str], no_of_months: int) -> str:
+    """Write an index.html landing page linking to all generated charts."""
+    links = "\n".join(
+        f'    <li><a href="./{os.path.basename(f)}">{os.path.basename(f).split("_")[0]}</a></li>'
+        for f in saved_files
+    )
+    updated = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %Z")
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Volume Profile Charts ({no_of_months}M)</title>
+  <style>
+    body {{ font-family: Arial, sans-serif; margin: 40px auto; max-width: 600px; color: #222; }}
+    h1 {{ font-size: 22px; }}
+    li {{ margin: 6px 0; }}
+    a {{ color: #1565C0; text-decoration: none; }}
+    a:hover {{ text-decoration: underline; }}
+    .updated {{ color: #777; font-size: 13px; }}
+  </style>
+</head>
+<body>
+  <h1>Volume Profile Charts ({no_of_months} Months)</h1>
+  <p class="updated">Last updated: {updated}</p>
+  <ul>
+{links}
+  </ul>
+</body>
+</html>
+"""
+    index_path = os.path.join(output_folder, "index.html")
+    with open(index_path, "w", encoding="utf-8") as f:
+        f.write(html)
+    return index_path
 
 DEFAULT_THEME = "light"
 
@@ -321,13 +362,32 @@ class VolumeProfileVisualizer:
 # =============================================================================
 # Main Block
 # =============================================================================
-if __name__ == "__main__":
-    # ================== USER-DEFINED VARIABLES ==================
-    tickers: str = 'QQQ,SPY,TSM,NVDA,AMZN,GOOGL,GOOG,MSFT,META,TSLA,AAPL,GDX,MU,INTC,BMNR,V,MA,ORCL,ARM' if len(sys.argv) < 2 else f'{sys.argv[1]},NVDA'
-    print(f"Tickers: {tickers}")
-    no_of_months: int = 6
-    num_bins: int = 20
-    output_folder: str = "R:/spiderhive0"
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Generate interactive volume profile charts as standalone HTML files."
+    )
+    parser.add_argument(
+        "tickers", nargs="?", default="SPY,AAPL,NVDA,TSM,GOOGL",
+        help='Comma-separated tickers, e.g. "AAPL,NVDA,TSLA" (default: %(default)s)'
+    )
+    parser.add_argument("-m", "--months", type=int, default=6,
+                        help="Lookback period in months (default: %(default)s)")
+    parser.add_argument("-b", "--bins", type=int, default=20,
+                        help="Number of price bins (default: %(default)s)")
+    parser.add_argument("-i", "--interval", default="1d",
+                        help="yfinance interval (default: %(default)s)")
+    parser.add_argument("-o", "--output",
+                        default=os.environ.get("VP_OUTPUT_DIR", "charts"),
+                        help="Output folder (default: %(default)s; env var VP_OUTPUT_DIR)")
+    parser.add_argument("--market-hours", action="store_true",
+                        help="Skip generation unless the US market is open (Mon-Fri 09:30-16:00 ET)")
+    args = parser.parse_args()
+
+    if args.market_hours and not market_is_open():
+        print("Market is closed — skipping chart generation.")
+        return
+
+    output_folder = args.output
     try:
         os.makedirs(output_folder, exist_ok=True)
         test_file = os.path.join(output_folder, ".write_test")
@@ -335,19 +395,25 @@ if __name__ == "__main__":
             f.write("")
         os.remove(test_file)
     except OSError:
-        output_folder = "c:/intel/parquet/tech_analysis"
-        print(f"R:/spiderhive0 not writable, falling back to {output_folder}")
-    link_suffix: str = "_gex_dashboard.html"
-    # ===========================================================
+        output_folder = "charts"
+        os.makedirs(output_folder, exist_ok=True)
+        print(f"{args.output} not writable, falling back to {output_folder}")
 
+    print(f"Tickers: {args.tickers}")
     viz = VolumeProfileVisualizer(
-        tickers=tickers,
-        no_of_months=no_of_months,
-        num_bins=num_bins,
-        link_suffix=link_suffix
+        tickers=args.tickers,
+        no_of_months=args.months,
+        num_bins=args.bins,
+        interval=args.interval,
     )
 
     viz.fetch_data()
-    viz.plot_chart(output_folder=output_folder)
+    saved_files = viz.plot_chart(output_folder=output_folder)
+    index_path = write_index(output_folder, saved_files, args.months)
+    print(f"   Index: {os.path.abspath(index_path)}")
 
     print("\n✅ All charts generated successfully with full ticker navigation!")
+
+
+if __name__ == "__main__":
+    main()

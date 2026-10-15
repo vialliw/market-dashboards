@@ -4,6 +4,8 @@ Interactive stock volume-profile dashboards in Python — Plotly candlesticks ov
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
+**Live charts:** https://vialliw.github.io/volume-profile-visualizer/ — updated hourly during US market hours (Mon–Fri 09:30–16:00 ET) via GitHub Actions.
+
 ## Features
 
 - Fetches OHLCV data for multiple tickers in a **single yfinance call**
@@ -12,34 +14,49 @@ Interactive stock volume-profile dashboards in Python — Plotly candlesticks ov
 - Cross-linked **navigation bar** across all generated ticker pages, plus a link to a companion GEX dashboard
 - **Light/dark theme switcher** on the page, persisted via `localStorage` across pages
 - Unified hover tooltips with `DD/MM/YYYY` dates, dual crosshairs, and timestamped chart titles
+- `index.html` landing page linking to all generated charts — ready for GitHub Pages
+- Optional **market-hours gate** (`--market-hours`) for scheduled runs
 
 ## Requirements
 
 - Python 3.9+
-- `yfinance`, `plotly`, `pandas`, `numpy`
 
 ```bash
-pip install yfinance plotly pandas numpy
+pip install -r requirements.txt
 ```
 
 ## Usage
 
 ```bash
-python VolumeProfileVisualizer.py "AAPL,NVDA,TSLA,SPY"
+python VolumeProfileVisualizer.py                        # defaults: SPY,AAPL,NVDA,TSM,GOOGL → charts/
+python VolumeProfileVisualizer.py "AAPL,NVDA,TSLA"       # custom tickers (comma-separated)
+python VolumeProfileVisualizer.py "SPY" -m 12 -o docs    # 12 months, output to docs/
+python VolumeProfileVisualizer.py --market-hours -o docs # skip if US market is closed
 ```
 
-Or edit the defaults in the `__main__` block:
-
-| Setting | Default | Notes |
+| Option | Default | Description |
 |---|---|---|
-| `tickers` | preset watchlist | overridden by the first CLI argument |
-| `no_of_months` | `6` | lookback period |
-| `num_bins` | `20` | number of price bins in the profile |
-| `output_folder` | `R:/spiderhive0` | falls back to `c:/intel/parquet/tech_analysis` if not writable — change to suit your machine |
+| `tickers` (positional) | `SPY,AAPL,NVDA,TSM,GOOGL` | Comma-separated ticker list |
+| `-m`, `--months` | `6` | Lookback period in months |
+| `-b`, `--bins` | `20` | Number of price bins in the profile |
+| `-i`, `--interval` | `1d` | yfinance data interval |
+| `-o`, `--output` | `charts` | Output folder (or set `VP_OUTPUT_DIR`) |
+| `--market-hours` | off | Only run while the US market is open (Mon–Fri 09:30–16:00 ET) |
+
+## Automation
+
+A GitHub Actions workflow (`.github/workflows/update-charts.yml`) regenerates the charts hourly at :30, Monday–Friday, covering the US trading session year-round (the `--market-hours` flag skips off-hours runs), then commits the results to `docs/`. With GitHub Pages enabled on `main` → `/docs`, the charts are live at:
+
+```
+https://vialliw.github.io/volume-profile-visualizer/
+https://vialliw.github.io/volume-profile-visualizer/SPY_VolumeProfile_6M.html
+```
+
+Market holidays and early-close days still run (harmless — yfinance returns the latest available bars).
 
 ## Output
 
-One file per ticker: `<TICKER>_VolumeProfile_<months>M.html`. Each page links to every other generated page, so you can jump between tickers without reopening the script.
+One file per ticker: `<TICKER>_VolumeProfile_<months>M.html`, plus `index.html`. Each page links to every other generated page, so you can jump between tickers without reopening the script.
 
 ## License
 
