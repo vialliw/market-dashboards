@@ -53,6 +53,38 @@ python GexDashboard.py "AAPL,NVDA,TSLA" -m 2  # custom tickers, 2 months of expi
 | `-o`, `--output` | `charts` | `charts` | Output folder (or set `VP_OUTPUT_DIR`) |
 | `--market-hours` | off | off | Only run while the US market is open (Mon–Fri 09:30–16:00 ET) |
 
+## AI Packet (LLM-ready analysis)
+
+Each `GexDashboard.py` run also writes `<TICKER>_ai_packet.json` — a self-contained prompt payload for LLM-based analysis of the options positioning:
+
+- `system_prompt` — institutional options strategist persona
+- `analysis_query` + `instructions` — what to analyze (gamma flip, call/put walls, net GEX, expiry positioning) and how to interpret it
+- `market_snapshot` + `expiries` — spot, per-expiry net GEX/regime/max pain/flip/ATM IV, walls, and per-strike OI & GEX
+- `expected_output` — the markdown sections the response should produce
+
+**Manual use:** paste `system_prompt` as the system message in ChatGPT/Claude/etc., then paste the rest of the JSON as the user message.
+
+**Programmatic use:**
+
+```python
+import json
+
+pkt = json.load(open("docs/SPY_ai_packet.json"))
+messages = [
+    {"role": "system", "content": pkt["system_prompt"]},
+    {"role": "user", "content": json.dumps({
+        "query": pkt["analysis_query"],
+        "instructions": pkt["instructions"],
+        "market_snapshot": pkt["market_snapshot"],
+        "expiries": pkt["expiries"],
+        "expected_output": pkt["expected_output"],
+    })},
+]
+# send `messages` to your LLM API of choice
+```
+
+Packets are published alongside the dashboards, e.g. https://vialliw.github.io/market-dashboards/SPY_ai_packet.json
+
 ## Automation
 
 A GitHub Actions workflow (`.github/workflows/update-charts.yml`) regenerates both dashboard types hourly at :30, Monday–Friday, covering the US trading session year-round (the `--market-hours` flag skips off-hours runs), then commits the results to `docs/`. With GitHub Pages enabled on `main` → `/docs`, the charts are live at:
