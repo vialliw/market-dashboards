@@ -1,0 +1,353 @@
+import yfinance as yf
+import plotly.graph_objects as go
+import pandas as pd
+from typing import Optional, Dict, Any, List
+from datetime import datetime
+import numpy as np
+import os
+import sys
+import json
+
+def get_filename(ticker, no_of_months):
+    return f"{ticker}_VolumeProfile_{no_of_months}M.html"
+
+DEFAULT_THEME = "light"
+
+THEMES = {
+    "light": {
+        "plot_bg": "#FFFFFF", "paper_bg": "#FFFFFF", "font": "#222222",
+        "grid": "rgba(0,0,0,0.12)", "line": "#BBBBBB",
+        "vol": "#4A90E2", "vol_opacity": 0.35,
+        "inc": "#26A69A", "dec": "#EF5350", "spike": "#555555",
+        "hover_bg": "#FFFFFF",
+        "nav_bg": "#F0F0F0", "nav_link": "#333333",
+        "nav_current": "#00796B", "nav_gex": "#1565C0",
+    },
+    "dark": {
+        "plot_bg": "grey", "paper_bg": "grey", "font": "#EEEEEE",
+        "grid": "rgba(255,255,255,0.15)", "line": "#AAAAAA",
+        "vol": "yellow", "vol_opacity": 0.44,
+        "inc": "#00FFAA", "dec": "#FF3B5C", "spike": "white",
+        "hover_bg": "#333333",
+        "nav_bg": "#1f1f1f", "nav_link": "#CCCCCC",
+        "nav_current": "#00FFAA", "nav_gex": "#4A90E2",
+    },
+}
+
+class VolumeProfileVisualizer:
+    """
+    Volume Profile Visualizer (v7.2) - Added navigation links to all tickers + GEX dashboard
+    """
+
+    def __init__(
+        self,
+        tickers: str,
+        no_of_months: int = 12,
+        num_bins: int = 20,
+        interval: str = "1d",
+        link_suffix: str = "_gex_dashboard.html",
+    ) -> None:
+        self.tickers_str: str = tickers.upper()
+        self.ticker_list: List[str] = [t.strip().upper() for t in tickers.split(",") if t.strip()]
+        self.no_of_months: int = no_of_months
+        self.num_bins: int = num_bins
+        self.period: str = f"{no_of_months}mo"
+        self.interval: str = interval
+        self.link_suffix: str = link_suffix
+
+        self.data: Optional[pd.DataFrame] = None
+
+    def fetch_data(self) -> pd.DataFrame:
+        """Download data for all tickers in ONE call."""
+        if not self.ticker_list:
+            raise ValueError("No valid tickers provided.")
+
+        try:
+            print(f"Downloading data for {self.tickers_str} in one call...")
+            df = yf.download(
+                self.ticker_list,
+                period=self.period,
+                interval=self.interval,
+                auto_adjust=True,
+                progress=False,
+                prepost=False
+            )
+
+            if df.empty:
+                raise ValueError("No data returned from yfinance.")
+
+            if isinstance(df.columns, pd.MultiIndex):
+                valid_tickers = [t for t in self.ticker_list if t in df.columns.get_level_values(1)]
+                if not valid_tickers:
+                    raise ValueError("No valid data for any ticker.")
+                self.ticker_list = valid_tickers
+
+            self.data = df
+            return df
+
+        except Exception as e:
+            raise ValueError(f"Data fetch failed: {str(e)}") from e
+
+    def _create_navigation_html(self, current_ticker: str) -> str:
+        """Create navigation bar with links to all tickers + GEX dashboard + theme switcher."""
+        nav = THEMES[DEFAULT_THEME]
+
+        # GEX Dashboard link
+        gex_link = f"""
+        <a href="./{current_ticker}{self.link_suffix}" class="vp-gex"
+           style="color: {nav['nav_gex']}; text-decoration: none; font-weight: bold; margin-right: 16px;">
+            → Open GEX Dashboard for {current_ticker}
+        </a>
+        """
+
+        # Volume Profile links for all tickers
+        ticker_links = []
+        for ticker in self.ticker_list:
+            OUTPUT_FILENAME = get_filename(ticker, self.no_of_months)
+            if ticker == current_ticker:
+                # Current ticker - highlighted but not clickable
+                ticker_links.append(
+                    f'<span class="vp-current" style="color: {nav["nav_current"]}; font-weight: bold; margin: 0 5px;">{ticker}</span>'
+                )
+            else:
+                ticker_links.append(
+                    f'<a href="./{OUTPUT_FILENAME}" class="vp-link" '
+                    f'style="color: {nav["nav_link"]}; text-decoration: none; margin: 0 5px;">{ticker}</a>'
+                )
+
+        ticker_nav = " ".join(ticker_links)
+
+        theme_options = "".join(
+            f'<option value="{name}">{name.capitalize()}</option>' for name in THEMES
+        )
+
+        nav_html = f"""
+        <div id="vp-nav" style="padding: 12px 20px; background-color: {nav['nav_bg']}; border-bottom: 1px solid {nav['line']};
+                    font-family: Arial, sans-serif; display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; flex: 1 1 auto; min-width: 0; font-size: 14px; line-height: 1.6;">
+                {ticker_nav}
+            </div>
+            <div style="font-size: 15px; display: flex; align-items: center; white-space: nowrap; margin-left: 16px;">
+                {gex_link}
+                <label for="vp-theme" class="vp-link" style="color: {nav['nav_link']}; margin-right: 6px;">Theme:</label>
+                <select id="vp-theme" onchange="vpApplyTheme(this.value)"
+                        style="padding: 3px 6px; background-color: {nav['nav_bg']}; color: {nav['nav_link']}; border: 1px solid {nav['line']};">
+                    {theme_options}
+                </select>
+            </div>
+        </div>
+        <script>
+        var VP_THEMES = {json.dumps(THEMES)};
+        function vpApplyTheme(name) {{
+            var t = VP_THEMES[name];
+            if (!t) return;
+            try {{ localStorage.setItem('vp_theme', name); }} catch (e) {{}}
+            var sel = document.getElementById('vp-theme');
+            if (sel) {{ sel.value = name; sel.style.backgroundColor = t.nav_bg; sel.style.color = t.nav_link; }}
+            var nav = document.getElementById('vp-nav');
+            if (nav) {{ nav.style.backgroundColor = t.nav_bg; nav.style.borderBottomColor = t.line; }}
+            document.body.style.backgroundColor = t.paper_bg;
+            document.querySelectorAll('.vp-link').forEach(function (e) {{ e.style.color = t.nav_link; }});
+            var cur = document.querySelector('.vp-current'); if (cur) cur.style.color = t.nav_current;
+            var gex = document.querySelector('.vp-gex'); if (gex) gex.style.color = t.nav_gex;
+            var gd = document.querySelector('.plotly-graph-div');
+            if (gd && window.Plotly) {{
+                Plotly.restyle(gd, {{'marker.color': t.vol, 'opacity': t.vol_opacity}}, [0]);
+                Plotly.restyle(gd, {{
+                    'increasing.line.color': t.inc, 'increasing.fillcolor': t.inc,
+                    'decreasing.line.color': t.dec, 'decreasing.fillcolor': t.dec
+                }}, [1]);
+                Plotly.relayout(gd, {{
+                    'paper_bgcolor': t.paper_bg, 'plot_bgcolor': t.plot_bg,
+                    'font.color': t.font, 'title.font.color': t.font,
+                    'xaxis.gridcolor': t.grid, 'yaxis.gridcolor': t.grid,
+                    'xaxis.linecolor': t.line, 'yaxis.linecolor': t.line,
+                    'xaxis.spikecolor': t.spike, 'yaxis.spikecolor': t.spike,
+                    'hoverlabel.bgcolor': t.hover_bg, 'hoverlabel.font.color': t.font,
+                    'hoverlabel.bordercolor': t.line
+                }});
+            }}
+        }}
+        (function () {{
+            var saved = '{DEFAULT_THEME}';
+            try {{ saved = localStorage.getItem('vp_theme') || saved; }} catch (e) {{}}
+            if (!VP_THEMES[saved]) saved = '{DEFAULT_THEME}';
+            vpApplyTheme(saved);
+        }})();
+        </script>
+        """
+        return nav_html
+
+    def plot_chart(self, output_folder: str = "charts") -> List[str]:
+        """Generate chart with navigation links to all tickers and GEX dashboard."""
+        if self.data is None:
+            raise ValueError("Call fetch_data() first.")
+
+        os.makedirs(output_folder, exist_ok=True)
+        saved_files = []
+        theme = THEMES[DEFAULT_THEME]
+
+        for ticker in self.ticker_list:
+            print(f"Processing chart for {ticker}...")
+
+            profile = self._process_single_ticker(ticker)
+            df = profile['df']
+
+            fig = go.Figure()
+
+            # Volume Profile as subtle background
+            max_vol = float(profile['volume_by_bin'].max())
+            vol_scaled = (profile['volume_by_bin'] / max_vol) * 0.35
+
+            fig.add_trace(go.Bar(
+                x=vol_scaled,
+                y=profile['bin_midpoints'],
+                orientation='h',
+                name="Volume Profile",
+                marker_color=theme['vol'],
+                opacity=theme['vol_opacity'],
+                xaxis='x2',
+                yaxis='y'
+            ))
+
+            # Candlestick
+            fig.add_trace(go.Candlestick(
+                x=df.index,
+                open=df['Open'],
+                high=df['High'],
+                low=df['Low'],
+                close=df['Close'],
+                name="Candlestick",
+                increasing_line_color=theme['inc'],
+                decreasing_line_color=theme['dec']
+            ))
+
+            # Timestamp in market timezone if available, else local timezone
+            tz = getattr(df.index, "tz", None)
+            now = datetime.now(tz) if tz is not None else datetime.now().astimezone()
+            ts_str = now.strftime("%Y-%m-%d %H:%M %Z")
+
+            # Layout
+            fig.update_layout(
+                plot_bgcolor=theme['plot_bg'],
+                paper_bgcolor=theme['paper_bg'],
+                font=dict(color=theme['font']),
+                hoverlabel=dict(bgcolor=theme['hover_bg'], font=dict(color=theme['font']),
+                                bordercolor=theme['line']),
+                title=f"Volume Profile - {ticker} ({self.no_of_months} Months) | {ts_str}",
+                xaxis=dict(
+                    title="Date",
+                    domain=[0, 0.72],
+                    tickformat="%m/%Y",
+                    hoverformat="%d/%m/%Y",
+                    rangeslider=dict(visible=False)
+                ),
+                xaxis2=dict(
+                    title="Relative Volume",
+                    overlaying='x',
+                    side='top'
+                ),
+                yaxis=dict(title="Price"),
+                height=820,
+                margin=dict(l=60, r=80, t=100, b=60),  # Increased top margin for nav
+                hovermode="x unified"
+            )
+
+            fig.update_yaxes(nticks=25, showgrid=True, gridwidth=1, gridcolor=theme['grid'])
+
+            # Dual crosshairs
+            fig.update_xaxes(showspikes=True, spikemode='across', spikesnap='cursor',
+                             spikecolor=theme['spike'], spikethickness=1, spikedash='dot')
+            fig.update_yaxes(showspikes=True, spikemode='across', spikesnap='cursor',
+                             spikecolor=theme['spike'], spikethickness=1, spikedash='dot')
+
+            # === Save with navigation bar ===
+            OUTPUT_FILENAME = get_filename(ticker, self.no_of_months)
+            save_path = os.path.join(output_folder, OUTPUT_FILENAME)
+
+            # Generate HTML and inject navigation
+            html_str = fig.to_html(full_html=True, include_plotlyjs='cdn')
+
+            nav_html = self._create_navigation_html(ticker)
+
+            # Inject navigation bar right after <body>
+            html_str = html_str.replace(
+                '<body>',
+                f'<body>\n{nav_html}',
+                1
+            )
+
+            # Write the modified HTML
+            with open(save_path, 'w', encoding='utf-8') as f:
+                f.write(html_str)
+
+            print(f"   Saved: {os.path.abspath(save_path)} (with navigation links)")
+            saved_files.append(save_path)
+
+        return saved_files
+
+    def _process_single_ticker(self, ticker: str) -> Dict[str, Any]:
+        """Process data and calculate volume profile for one ticker."""
+        if self.data is None:
+            raise ValueError("Call fetch_data() first.")
+
+        if len(self.ticker_list) > 1 and isinstance(self.data.columns, pd.MultiIndex):
+            ticker_data = self.data.xs(ticker, level=1, axis=1)
+        else:
+            ticker_data = self.data
+
+        df = ticker_data[['Open', 'High', 'Low', 'Close', 'Volume']].copy()
+        df['Volume'] = df['Volume'].astype(float)
+
+        prices = df['Close']
+        min_p, max_p = float(prices.min()), float(prices.max())
+        bin_edges = np.linspace(min_p, max_p, self.num_bins + 1)
+
+        df['price_bin'] = pd.cut(prices, bins=bin_edges, include_lowest=True, right=False)
+        volume_by_bin = df.groupby('price_bin', observed=True)['Volume'].sum()
+        bin_midpoints = volume_by_bin.index.map(lambda x: x.mid)
+
+        poc_idx = volume_by_bin.idxmax()
+        poc_price = float(poc_idx.mid)
+
+        return {
+            'df': df,
+            'volume_by_bin': volume_by_bin,
+            'bin_midpoints': bin_midpoints,
+            'poc_price': poc_price,
+        }
+
+
+# =============================================================================
+# Main Block
+# =============================================================================
+if __name__ == "__main__":
+    # ================== USER-DEFINED VARIABLES ==================
+    tickers: str = 'QQQ,SPY,TSM,NVDA,AMZN,GOOGL,GOOG,MSFT,META,TSLA,AAPL,GDX,MU,INTC,BMNR,V,MA,ORCL,ARM' if len(sys.argv) < 2 else f'{sys.argv[1]},NVDA'
+    print(f"Tickers: {tickers}")
+    no_of_months: int = 6
+    num_bins: int = 20
+    output_folder: str = "R:/spiderhive0"
+    try:
+        os.makedirs(output_folder, exist_ok=True)
+        test_file = os.path.join(output_folder, ".write_test")
+        with open(test_file, "w") as f:
+            f.write("")
+        os.remove(test_file)
+    except OSError:
+        output_folder = "c:/intel/parquet/tech_analysis"
+        print(f"R:/spiderhive0 not writable, falling back to {output_folder}")
+    link_suffix: str = "_gex_dashboard.html"
+    # ===========================================================
+
+    viz = VolumeProfileVisualizer(
+        tickers=tickers,
+        no_of_months=no_of_months,
+        num_bins=num_bins,
+        link_suffix=link_suffix
+    )
+
+    viz.fetch_data()
+    viz.plot_chart(output_folder=output_folder)
+
+    print("\n✅ All charts generated successfully with full ticker navigation!")
