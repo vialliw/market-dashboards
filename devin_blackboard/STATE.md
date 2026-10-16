@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F4-T3 critic gate PASS by Agent D — Cycle F4 CLOSED)
+Last Updated: 2026-10-16 (F5-T1 done by Agent B — awaiting challenger/critic)
 Current Branch: main
 
 ## Repo
@@ -10,12 +10,16 @@ GexDashboard.py, hourly GitHub Actions → docs/ → GitHub Pages.
 
 ## Current cycle
 
-F4: live SPY run (market open, 2026-10-16) failed — expiry 2026-10-29
-has all-NaN openInterest; compute_max_pain's loud ValueError propagated
-and killed the whole ticker. F4-T1 makes per-expiry metric computation
-in build_ai_packet + the plot loop tolerate unusable expiries (explicit
-nulls + metrics_unavailable flag) while keeping loud failure on the
-raw functions for direct misuse.
+F5: external review of live-run results found (1) degenerate chains
+(live INTC 2026-10-19: single strike, call_oi=2, put_oi=0) emit
+mathematically-valid-but-meaningless metrics — F5-T1 adds payout
+eligibility rules (>=2 distinct finite-OI strikes AND positive total
+finite OI) so such expiries emit metrics_unavailable:true +
+data_quality:'insufficient_data' with per-metric availability
+(gamma_flip computed independently); (2) the broad except-ValueError
+in _per_expiry_metrics is narrowed — eligibility pre-checks keep
+compute fns off unusable slices and only numpy's empty-argmin
+message is tolerated; unrelated ValueErrors propagate.
 CONSTRAINT: NO live yfinance calls; tests must stay offline
 (tests/fixtures/TSM_ai_packet.json + synthetic dfs).
 
@@ -301,10 +305,69 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
       No import/network additions in the code
       diff. Tree clean (probe file is an allowed
       output). Cycle F4 CLOSED.
+- F5-T1 (B, done): degenerate-chain eligibility +
+  scoped ValueError absorption —
+  (1) NEW MIN_PAYOUT_STRIKES=2 +
+      _payout_ineligibility(sub): 'no_finite_oi'
+      when zero finite-OI rows;
+      'insufficient_data' when the usable chain
+      is degenerate — fewer than 2 DISTINCT
+      finite-OI strikes (single-candidate argmin
+      is vacuous: live INTC 2026-10-19, one
+      strike, call_oi=2/put_oi=0 -> 'correct'
+      but meaningless 190) or total finite OI
+      <= 0 (every candidate is an argmin);
+      None when eligible.
+  (2) _per_expiry_metrics now ALWAYS returns a
+      dict {max_pain, max_pain_constrained,
+      gamma_flip, unavailable}: the eligibility
+      pre-check runs BEFORE the payout fns so
+      they are never called on unusable slices;
+      gamma_flip is computed independently of
+      OI eligibility (per-metric availability —
+      a real crossing is still emitted on a
+      flagged expiry); the belt-and-suspenders
+      except absorbs ONLY the ValueError
+      matching 'attempt to get argmin of an
+      empty sequence' — every other ValueError
+      and all non-ValueErrors propagate.
+  (3) build_ai_packet: unavailable expiry emits
+      all 7 payout fields as explicit nulls +
+      metrics_unavailable:true +
+      data_quality=reason + the computed
+      gamma_flip (real value or null);
+      meta.data_quality + metric_definitions
+      document 'insufficient_data' and a new
+      'payout_eligibility' entry.
+  (4) plot loop: max-pain vlines/legend skipped
+      with a 'max_pain unavailable (<reason>)'
+      annotation; gamma_flip line may still
+      draw.
+  Tests 26 -> 33 (+7): INTC-style single-strike
+  -> insufficient_data with payout nulls and
+  strikes still exported (raw compute_max_pain
+  still returns the vacuous 190.0 — loud-
+  artifact behavior on direct misuse is
+  unchanged); eligibility boundaries (2-strike
+  eligible, 1-distinct-strike-both-rows
+  ineligible, 2-strike-only-1-finite-OI
+  ineligible); zero-total-OI ->
+  insufficient_data; partial availability
+  (degenerate payout + real gamma_flip 110.0
+  emitted under metrics_unavailable:true);
+  injected unrelated ValueError propagates;
+  injected empty-argmin-message ValueError
+  absorbed -> insufficient_data; injected
+  KeyError/TypeError propagate (closes the
+  F4-T2 non-blocking test-rigor gap).
+  pytest: 33 passed. ACs: 2/2 PASS.
+  Commit bb9f7b0.
 
 ## Ready
 
-- (none — Cycle F4 closed; awaiting orchestrator)
+- F5-T2 (C, todo): adversarial review of F5-T1 —
+  now unblocked (F5-T1 done).
+- F5-T3 (D, todo): critic gate — follows F5-T2.
 
 ## Notes for reviewers
 
@@ -332,6 +395,19 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
   data_quality reason key only appears on unavailable expiries
   (stale_iv-style conditional key). _per_expiry_metrics catches ONLY
   ValueError; TypeError/KeyError/etc. still propagate loudly.
+- F5-T1 semantics EVOLVE that flag: metrics_unavailable:true now means
+  the PAYOUT metrics (max_pain*/band flags) are unavailable — those 7
+  fields are still explicit nulls + data_quality reason, but
+  gamma_flip is an independent metric (gex-based, not OI-based) and
+  MAY be non-null on a flagged expiry. _per_expiry_metrics always
+  returns a dict now (never None); the "unavailable" key carries
+  None / 'no_finite_oi' / 'insufficient_data'. New data_quality reason
+  'insufficient_data' covers degenerate chains: <2 distinct finite-OI
+  strikes (vacuous single-candidate argmin — live INTC 2026-10-19) or
+  total finite OI <= 0 (every candidate is an argmin). Payout fns are
+  never called on ineligible slices; the remaining except only
+  tolerates numpy's 'attempt to get argmin of an empty sequence' —
+  unrelated ValueErrors propagate.
 - F2-T2 non-blocking notes: (a) the `max_abs < MIN_MATERIAL_GEX`
   early return at GexDashboard.py:283 is functionally redundant —
   the combined floor already makes every sub-floor strike
