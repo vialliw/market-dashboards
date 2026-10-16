@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F6-T1 done by Agent B — WellnessCheck.py implemented, 3/3 AC PASS)
+Last Updated: 2026-10-16 (F6-T2 done by Agent C — adversarial review CONCERNS, 3 findings)
 Current Branch: main
 
 ## Repo
@@ -546,11 +546,122 @@ CONSTRAINT: NO live yfinance calls; tests stay offline
   findstr yfinance tests: no match; CLI exit 0 PASS.
   ACs: 3/3 PASS. Commits 5519f6d, 1342d64, 8593526.
 
+- F6-T2 (C, done): adversarial review CONCERNS — 3
+  findings (1 arguably blocking, 2 moderate), probe
+  devin_blackboard/probe_f6_t2.py (97 checks, 95 PASS,
+  2 intentional finding-documenting FAILs):
+  Per-check tamper matrix: every mandated single-tamper
+  fires at exactly the right check_id (max_pain argmin→
+  MAXPAIN-01 only, flip→FLIP-01 only, agg drift 10x-tol
+  →AGG-01 only while 0.4x-tol PASSes, 4 stale-IV variants
+  →IV-01 only incl. boundary iv==2.0 clean, flag/null→
+  AVAIL-01a(+01c/01b co-fires all legitimate),
+  false-unavailable-on-eligible→AVAIL-01b only incl.
+  pos==2 boundary, dup strike/expiry/missing field/non-
+  bool flag→SCHEMA-01, NaN/Inf/neg-OI/spot=0/bad dates
+  →NUMERIC-01, band-flag/candidate-band/constrained-
+  argmin→MAXPAIN-02 only, 5 snapshot tampers→SNAP-01
+  only). 'unperformed' semantics fully verified: SNAP-01
+  + AVAIL-01b reason-code without snapshot; ambiguous
+  (100,1)/(110,0) vs (110,NaN) identical exports →
+  unperformed without snapshot, PASS vs FAIL with;
+  zero-total→insufficient_data verified; flag-absent→
+  unperformed not PASS. Reference impls confirmed
+  independent (no GexDashboard import in source or
+  sys.modules; plain-Python recompute == production on
+  all 7 fixture expiries incl. constrained flag dicts).
+  Failure paths: malformed/missing/non-object/unsupported
+  →INPUT-01 exit 1 + structured report; injected
+  exception→CHECKER-ERR exit 2; --report==packet→exit 2,
+  bytes intact; 'x'-safe suffix fallback verified;
+  WARN→exit 0; --max-age-hours honored; unversioned
+  source→code_commit:null + note. Fixture integrity:
+  every exported strike field preserved verbatim old→new
+  EXCEPT the intended stale-IV transform (23 strikes,
+  iv→null + raw_implied_volatility==old value); corrected
+  flips 430/432.5/442.5/460/465/440/475, argmins
+  435/450/445/460/470/420/450, total -52,574,553.7344639;
+  _prefix_run confirmed a DIFFERENT fetch (85/105
+  strikes' OI differ vs reconstructed chain — claim said
+  ~72, actual 85); raw pair carries 20 real NaN-OI rows,
+  SNAP-01 PASSes via NaN->0. 33 legacy + 41 wellness
+  tests pass (74/74). Mutation harness (mutant modules
+  in-repo, REAL pytest suite): 5/15 caught (flip floor,
+  wrong crossing direction, checker-err exit, band width,
+  dup-strike), 10 escape — all edges verified correct in
+  the real impl by this probe (see notes).
+  FINDINGS (details in notes):
+  (F3) MAXPAIN-02 FALSE-POSITIVE on honest packets —
+      the exported-OI=0 vs raw-NaN ambiguity that
+      AVAIL-01b explicitly resolves as 'unperformed' is
+      NOT applied to the constrained-candidate set:
+      packets emitted by the REAL build_ai_packet FAIL.
+      An expiry whose band [0.7s,1.3s] contains only
+      all-NaN-OI strikes (exported 0) + finite OI outside
+      -> production honestly emits fell_back:true+mpc=50;
+      checker treats the exported-0 strikes as
+      candidates -> expects fell_back:false+mpc=80 ->
+      FAIL on honest output (exit 1). Variant: in-band
+      NaN strike below a finite in-band candidate on a
+      pain tie -> expects mpc=75 vs honest 90.
+      MAXPAIN-01 immune (flat-min endpoints are always
+      real-OI strikes — verified). Reachable on real
+      chains — the TSM raw fixture carries 20 NaN-OI
+      rows; dead strikes inside ±30% of spot occur on
+      illiquid names (the INTC case). Spec-faithful fix
+      per the plan's own doctrine: when the MAXPAIN-02
+      verdict hinges on exported-0-OI strikes, emit
+      'unperformed' without snapshot / reconcile with.
+  (F1) Unreadable --snapshot FILE -> CHECKER-ERR exit 2
+      instead of SNAP-01 FAIL exit 1: check_snapshot
+      correctly returns SNAP-01 FAIL (line 1346-1354)
+      but build_report then calls _sha256(snapshot_path)
+      unconditionally (line ~1685) -> FileNotFoundError
+      -> the SNAP-01 verdict is DISCARDED and the run
+      reports a checker-internal error for what is an
+      input error. Wrong check_id + wrong exit class.
+      (Non-DataFrame/missing-column snapshots are fine —
+      the file exists so the hash succeeds.)
+  (F2) SNAP-01 only iterates packet expiries: a raw
+      snapshot expiry entirely absent from the packet is
+      never reconciled -> PASS while rows exist with no
+      packet counterpart (spec: rows that "cannot be
+      reconciled to packet strikes" -> FAIL). Confirmed:
+      extra expiry in snapshot -> SNAP-01 PASS.
+  (N1) Scope: docs/enhancements/wellness_check.md added
+      in claim commit 286c36f — outside declared
+      output_files (benign approved-plan text).
+  (N2) 10/15 mutants escape committed suite, all narrow
+      edges verified by probe instead: AGG tol 1e-9→1e-3
+      (committed tamper is +1e6 only), redundant
+      early-return (uncatchable by design — same as the
+      production note), raw total<=0→<0, pos>=2→>2,
+      stale-iv null requirement, 'x'→'w' report mode,
+      first→last argmin tie (committed tie test only
+      asserts FLIP-01), accept-any-reason, FRESH >→>=,
+      flag-absent→available. Suite is meaningful on the
+      main paths; edge invariants are probe-verified.
+  (N3) FLIP-01 co-fires FAIL when expiries list absent
+      but nearest_gamma_flip still claimed — honest
+      (dangling claim with no data).
+  (N4) int() OI truncation: fractional raw OI would
+      false-FAIL SNAP-01 (unrealistic input).
+  (N5) RawSnapshotIndex keys raw expiry by calendar
+      DATE; production slices by exact timestamp — a
+      non-midnight raw expiry would misattribute (edge).
+  pytest 74/74; zero network; probe artifacts under
+  devin_blackboard/ only.
+
 ## Ready
 
-- F6-T2 (C): adversarial review — mutation probes
-  corrupting each checked invariant should be caught by
-  the matching check_id.
+- F6-T3 (D): critic gate — note F6-T2 returned CONCERNS
+  with 3 findings (F3 MAXPAIN-02 false-positive on
+  honest packets via the exported-0/NaN candidate
+  ambiguity; F1 unreadable --snapshot -> CHECKER-ERR
+  instead of SNAP-01 FAIL; F2 raw-only expiry never
+  reconciled). Orchestrator to decide whether F6 needs
+  a remediation pass or the findings are accepted as
+  documented residuals.
 
 ## Notes for reviewers
 

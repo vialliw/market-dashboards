@@ -542,7 +542,7 @@
     "id": "F6-T2",
     "title": "Adversarial review of WellnessCheck",
     "role": "challenger",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F6-T1"
     ],
