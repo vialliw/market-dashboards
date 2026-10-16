@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F2-T3 done by Agent D — PASS; cycle F2 CLOSED)
+Last Updated: 2026-10-16 (F3-T1 done by Agent B — 3/3 AC PASS; awaiting F3-T2 challenger)
 Current Branch: main
 
 ## Repo
@@ -10,8 +10,11 @@ GexDashboard.py, hourly GitHub Actions → docs/ → GitHub Pages.
 
 ## Current cycle
 
-F2: external ChatGPT review of the issue-#1 fix (cycle F1) returned
-NEEDS_REVISION with 3 blocking concerns — now implemented in F2-T1.
+F3: external review round 3 — band removal alone could not explain
+max_pain 225-235 -> 435 since the original was already the canonical
+argmin. Orchestrator forensics verified the TRUE root cause: NaN
+openInterest rows make every pain sum NaN and np.argmin returns the
+first NaN index = lowest strike. Fixed in F3-T1.
 CONSTRAINT: market CLOSED during this cycle — NO live yfinance calls;
 tests must use tests/fixtures/TSM_ai_packet.json.
 
@@ -86,10 +89,36 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   tests/test_gex_metrics.py + devin_blackboard/*; tree clean.
   Probe: devin_blackboard/probe_f2_t3.py (20/20 checks).
   Cycle F2 CLOSED.
+- F3-T1 (B, done): TRUE root cause fixed —
+  (1) NEW _finite_oi_rows() drops nonfinite-strike/nonfinite-OI rows
+      in _payout_pain AND both compute_max_pain fns before the payout
+      loop / candidate-strike extraction (docstrings document the
+      225/230/235 np.argmin-first-NaN mechanism).
+  (2) NEW band-edge flags selected_lowest_candidate /
+      selected_highest_candidate on compute_max_pain_constrained
+      distinguish constraint-driven eligible-endpoint selection from
+      literal band_boundary_hit; both emitted per-expiry in the
+      packet + documented in meta.metric_definitions.
+  (3) meta.data_quality now notes exported open_interest/call_oi/
+      put_oi may conflate true-zero OI with missing data (source NaN
+      collapsed to 0 by aggregation); missing-OI rows excluded from
+      payout sums.
+  Tests: 20 -> 24 offline tests (NaN-OI regression w/ independent
+  argmin 420 vs old lowest-strike artifact + all-NaN slice ->
+  ValueError; between-strikes band-edge flags lowest+highest;
+  all-NaN gex -> None; packet flag assertions; OI-conflation note).
+  pytest: 24 passed. Probe devin_blackboard/probe_f3_t1.py: naive
+  original algorithm reproduces EXACTLY 225/230/235 on zero-as-NaN
+  fixture dfs; fixed returns independent argmin 450/445/450; clean
+  canonical max_pain unchanged (435/450/445/460/470/420/450);
+  edge flags correct. ACs: 3/3 PASS. Commit 9a8f573 (+bde2c93 wrap).
 
 ## Ready
 
-- (none — cycle F2 complete)
+- F3-T2 (C, todo): adversarial review of F3-T1 — NaN-OI exclusion
+  must not alter clean-data results; argmin tie behavior; band-edge
+  flag semantics; provenance accuracy; mutation-check the regression
+  test; scope/diff audit; zero network.
 
 ## Notes for reviewers
 
@@ -101,7 +130,15 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   (pre-dates the fields); new build_ai_packet output includes them —
   asserted by tests.
 - Empty-df input to either max_pain fn still raises ValueError
-  (pre-existing, unchanged).
+  (pre-existing, unchanged); an all-NaN-OI df now lands on the same
+  ValueError after filtering — loud failure, never an artifact.
+- New flags: band_boundary_hit (literal strike==edge) implies the
+  matching selected_*_candidate flag, not vice versa — selected_*
+  fires whenever the argmin is the lowest/highest ELIGIBLE strike,
+  including the common case where the unconstrained argmin itself
+  sits at an interior edge of the eligible set.
+- np.argmin tie behavior unchanged: first lowest index wins among
+  equal pains (documented implicitly; challenger may probe).
 - F2-T2 non-blocking notes: (a) the `max_abs < MIN_MATERIAL_GEX`
   early return at GexDashboard.py:283 is functionally redundant —
   the combined floor already makes every sub-floor strike
