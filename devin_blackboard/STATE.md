@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F6-T2 done by Agent C — adversarial review CONCERNS, 3 findings)
+Last Updated: 2026-10-16 (F6-T4 done by Agent B — all 3 F6-T2 findings remediated, ACs 2/2 PASS)
 Current Branch: main
 
 ## Repo
@@ -652,16 +652,51 @@ CONSTRAINT: NO live yfinance calls; tests stay offline
   pytest 74/74; zero network; probe artifacts under
   devin_blackboard/ only.
 
+- F6-T4 (B, done): all 3 F6-T2 findings remediated —
+  (F3) check_max_pain_constrained(packet, raw_index):
+      without --snapshot the verdict is computed on BOTH
+      the full exported strike set AND the unambiguous-
+      only set (strikes with >=1 positive-OI side);
+      if they differ on any compared field the expiry is
+      ambiguity-dependent -> MAXPAIN-02 'unperformed'
+      with named expiries + 'reconcile via --snapshot'
+      note — honest NaN-in-band fell_back packets and
+      the pain-tie variant no longer false-FAIL
+      (subset-stability: identical endpoint verdicts
+      imply identical verdicts under EVERY ambiguous-
+      subset removal — argmin stays on the smallest
+      unambiguous minimizer, flags/fell_back can't
+      flip). With --snapshot, candidates recomputed
+      from raw finite-OI rows (new _raw_payout_rows) ->
+      true mismatch FAILs. New helpers
+      _ambiguous_exported_strike / _raw_payout_rows.
+  (F1) build_report guards _sha256(snapshot_path) —
+      unreadable snapshot -> snapshot_hash:null +
+      snapshot_hash_error field, SNAP-01 FAIL + exit 1
+      (was CHECKER-ERR exit 2 losing the verdict).
+  (F2) check_snapshot now emits a finding for every
+      snapshot expiry absent from the packet
+      (unreconciled raw rows -> SNAP-01 FAIL).
+  Tests 74 -> 78 (all offline): ambiguous-band honest
+  packet -> unperformed (both ambiguity directions),
+  snapshot resolution PASS/FAIL in both worlds,
+  unreadable + non-DataFrame snapshot -> exit 1 +
+  SNAP-01 FAIL + provenance error field, raw-only
+  expiry -> SNAP-01 FAIL. pytest 78/78; probe_f6_t2.py
+  97/97 (S6b/S7 expectations updated to assert the
+  FIXED behavior; S11 whitelist extended to docs/ per
+  adjudicated non-blocking note N1). Side benefit: the
+  'tie_last_min' mutant (first->last argmin tie) is now
+  CAUGHT by the new tests. ACs: 2/2 PASS.
+  Commits a6636f3, 025b530, 79954e1.
+
 ## Ready
 
-- F6-T3 (D): critic gate — note F6-T2 returned CONCERNS
-  with 3 findings (F3 MAXPAIN-02 false-positive on
-  honest packets via the exported-0/NaN candidate
-  ambiguity; F1 unreadable --snapshot -> CHECKER-ERR
-  instead of SNAP-01 FAIL; F2 raw-only expiry never
-  reconciled). Orchestrator to decide whether F6 needs
-  a remediation pass or the findings are accepted as
-  documented residuals.
+- F6-T3 (D): critic gate — F6-T4 remediation is DONE:
+  all 3 F6-T2 findings fixed in WellnessCheck.py with
+  regression tests (pytest 78/78, probe 97/97, ACs
+  2/2 PASS). Awaiting critic verification of the
+  remediation to close cycle F6.
 
 ## Notes for reviewers
 

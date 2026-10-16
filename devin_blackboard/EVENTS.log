@@ -443,3 +443,5 @@ Evidence map:
     "output": "es=['WellnessCheck.py', 'devin_blackboard/EVENTS.log', 'devin_blackboard/STATE.md', 'devin_blackboard/TASKS.json', 'devin_blackboard/regen_f6_fixture.py', 'docs/enhancements/wellness_check.md', 'tests/fixtures/TSM_ai_packet.json', 'tests/fixtures/TSM_raw_ai_packet.json', 'tests/fixtures/TSM_raw_snapshot.pkl', 'tests/fixtures/TSM_snapshot.pkl', 'tests/test_wellness.py']\nPASS S11 provenance: packet sha256 of file bytes + snapshot hash + commit + counts | commit=025b5304\n\n=== 97 checks, 0 FAIL ===\n"
   }
 ]
+
+[2026-10-16] B | DONE F6-T4 | remediated F6-T2 findings F1/F2/F3 in WellnessCheck.py: MAXPAIN-02 exported-0/NaN candidate ambiguity -> unperformed without snapshot / reconciled via --snapshot (raw finite-OI rows); unreadable --snapshot -> SNAP-01 FAIL + exit 1 (was CHECKER-ERR exit 2); raw-only snapshot expiries -> SNAP-01 FAIL; tests 74->78, pytest 78/78, probe 97/97, ACs 2/2 | files: WellnessCheck.py, tests/test_wellness.py, devin_blackboard/probe_f6_t2.py
