@@ -122,5 +122,102 @@
         "expected_exit": 1
       }
     ]
+  },
+  {
+    "id": "F2-T1",
+    "title": "Implement review amendments: absolute materiality floor, labeled constrained max_pain, IV/GEX provenance, extended tests",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F1-T3"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "AGENTS.md"
+    ],
+    "output_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py"
+    ],
+    "scope": "External ChatGPT review of the F1 fix returned NEEDS_REVISION with 3 blocking concerns. Implement these amendments. GEX units in this code: dollar-gamma in $M per 1% move (gamma*OI*100*spot^2/1e8), so a sane absolute floor is MIN_MATERIAL_GEX = 1e-3 (~$1k notional gamma).\n\nAMENDMENTS:\n1. compute_gamma_flip(df, spot=None): material strike iff |gex| >= max(0.01*max_abs, 1e-3). If max_abs < 1e-3 (whole slice is numerical noise) return None. Drop nonfinite strikes before grouping; zero-gex strikes never anchor a crossing. Keep spot=None -> first ascending crossing semantics.\n2. compute_max_pain(df, spot=None): return canonical UNCONSTRAINED max pain as before; ADD bounded variant. Packet/dashboard output must emit BOTH: 'max_pain' (unconstrained) and 'max_pain_constrained' with 'max_pain_candidate_band': [0.7*spot, 1.3*spot], 'max_pain_band_fell_back': bool, and distinguish empty-band fallback from a minimum landing on the band boundary (e.g. 'max_pain_band_boundary_hit': bool). Name semantics honestly: constrained payout minimum, not 'nearest-to-spot'.\n3. build_ai_packet: for stale strikes (IV>2.0) emit implied_volatility:null, raw_implied_volatility:<original>, stale_iv:true; document in meta.data_quality that stale-IV strikes' GEX is retained-with-flag (IV-derived gamma is suspect; consumers may exclude). Add meta.metric_definitions noting gamma_flip is a strike-profile sign-crossing proxy at current spot (modeled call-long/put-short convention), not the repriced-chain flip; max_pain_constrained defined as constrained payout minimum.\n4. tests/test_gex_metrics.py: add cases - alternating +/-1e-12 noise -> None; all-zero book -> None; below/at/above the 1e-3 floor boundary; multiple crossings -> nearest to spot; unconstrained max pain outside band -> both fields + flags set; empty-band fallback vs boundary-hit distinguished; nonfinite strikes dropped; raw_implied_volatility provenance present; all offline (fixture only, no network).\n\nHARD RULES: no yfinance/network calls; do not run the full scripts; minimal diffs; keep backward-compatible signatures.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all tests pass including new floor-boundary/alternating-noise/zero-OI/provenance cases"
+      },
+      {
+        "id": "AC-2",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      },
+      {
+        "id": "AC-3",
+        "check": "probe",
+        "command": "offline probe on TSM fixture",
+        "expected": "per-expiry unconstrained max_pain computed independently; constrained variant labeled; alternating-noise df returns None"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F2-T2",
+    "title": "Adversarial review of F2 amendments",
+    "role": "challenger",
+    "status": "ready",
+    "depends_on": [
+      "F2-T1"
+    ],
+    "assigned_to": "C",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Adversarially review F2-T1. Do NOT edit source/tests. Verify: absolute floor 1e-3 actually blocks uniformly-scaled noise slices and +/-1e-12 alternating inputs; relative+absolute combined criterion cannot reintroduce artifacts; unconstrained vs constrained max_pain fields are distinct and correctly labeled; boundary-hit vs empty-band fallback are distinguishable; raw_implied_volatility provenance correct; metric_definitions documentation accurate; no regressions (spot=None path, backward compat); no network. Run mutation probes if useful. Write verdict to STATE.md + EVENTS.log.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "review",
+        "expected": "APPROVED or specific blocking findings with evidence"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F2-T3",
+    "title": "Critic gate for F2",
+    "role": "critic",
+    "status": "ready",
+    "depends_on": [
+      "F2-T2"
+    ],
+    "assigned_to": "D",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Independent final gate for F2. Re-run all acceptance criteria. Independently recompute the canonical unconstrained max_pain payout sums for TSM 2026-10-16 expiry from fixture strike data (sum over strikes of call_OI*max(S-K,0)+put_OI*max(K-S,0) for candidate S values) and report the true argmin + whether 435 was constrained or unconstrained. Verify alternating +/-1e-12 noise -> None, floor boundary behavior, both max_pain fields + flags present, raw IV provenance, and diff scope clean. Report concrete numbers in EVENTS.log. PASS/FAIL verdict.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "independent_verification",
+        "expected": "PASS with independently computed payout totals + all ACs"
+      }
+    ],
+    "result": null
   }
 ]
