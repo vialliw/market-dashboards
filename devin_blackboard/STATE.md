@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F3-T3 done by Agent D — PASS; cycle F3 CLOSED)
+Last Updated: 2026-10-16 (F4-T1 done by Agent B — awaiting challenger)
 Current Branch: main
 
 ## Repo
@@ -10,13 +10,14 @@ GexDashboard.py, hourly GitHub Actions → docs/ → GitHub Pages.
 
 ## Current cycle
 
-F3: external review round 3 — band removal alone could not explain
-max_pain 225-235 -> 435 since the original was already the canonical
-argmin. Orchestrator forensics verified the TRUE root cause: NaN
-openInterest rows make every pain sum NaN and np.argmin returns the
-first NaN index = lowest strike. Fixed in F3-T1.
-CONSTRAINT: market CLOSED during this cycle — NO live yfinance calls;
-tests must use tests/fixtures/TSM_ai_packet.json.
+F4: live SPY run (market open, 2026-10-16) failed — expiry 2026-10-29
+has all-NaN openInterest; compute_max_pain's loud ValueError propagated
+and killed the whole ticker. F4-T1 makes per-expiry metric computation
+in build_ai_packet + the plot loop tolerate unusable expiries (explicit
+nulls + metrics_unavailable flag) while keeping loud failure on the
+raw functions for direct misuse.
+CONSTRAINT: NO live yfinance calls; tests must stay offline
+(tests/fixtures/TSM_ai_packet.json + synthetic dfs).
 
 ## What's Done
 
@@ -186,10 +187,41 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   (E) Diff audit 5a230fc..HEAD: only GexDashboard.py +
   tests/test_gex_metrics.py + devin_blackboard/*; tree
   clean. Cycle F3 CLOSED.
+- F4-T1 (B, done): unusable-expiry tolerance —
+  (1) NEW _per_expiry_metrics(sub, spot) bundles
+      compute_max_pain / compute_max_pain_constrained /
+      compute_gamma_flip; returns None on ValueError
+      (insufficient data — all-NaN OI, empty slice);
+      all OTHER exceptions still propagate.
+  (2) build_ai_packet: unusable expiry emits explicit
+      nulls for max_pain / max_pain_constrained /
+      candidate_band / fell_back / boundary_hit /
+      selected_lowest / selected_highest / gamma_flip
+      PLUS metrics_unavailable:true and per-expiry
+      data_quality reason ("no_finite_oi" /
+      "insufficient_data"); empty-slice atm_iv -> null;
+      meta.data_quality + meta.metric_definitions
+      document the flag; strikes still exported (OI
+      collapses to 0 — documented conflation);
+      whole-book fields unaffected.
+  (3) plot_gex_dashboard: same bundle; max_pain +
+      constrained vlines/legend omitted with a
+      "unavailable (no finite OI)" annotation; ATM IV
+      annotation skipped when None/nonfinite.
+  (4) Raw compute_max_pain / _constrained UNCHANGED —
+      still raise ValueError on all-NaN slices.
+  Tests 24 -> 26: mixed book (healthy + all-NaN-OI +
+  absent expiry) -> nulls+flag for unusable, real
+  metrics elsewhere, raw-ValueError asserts;
+  metrics_unavailable-vs-no-crossing distinction test.
+  pytest: 26 passed. AC 2/2 PASS. Commit 5bc7a42.
 
 ## Ready
 
-(none — cycle F3 closed; awaiting orchestrator)
+- F4-T2 (challenger C): adversarial review of the F4-T1
+  tolerance changes — null honesty, healthy-expiry
+  non-regression, loud ValueError preserved, no
+  over-broad exception swallowing, diff scope.
 
 ## Notes for reviewers
 
@@ -210,6 +242,13 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   sits at an interior edge of the eligible set.
 - np.argmin tie behavior unchanged: first lowest index wins among
   equal pains (documented implicitly; challenger may probe).
+- F4-T1 semantics: metrics_unavailable:true means the payout metrics
+  could not be computed at all (all metric fields explicit nulls +
+  per-expiry data_quality reason) — DISTINCT from gamma_flip:null
+  with metrics_unavailable:false (data fine, no material crossing).
+  data_quality reason key only appears on unavailable expiries
+  (stale_iv-style conditional key). _per_expiry_metrics catches ONLY
+  ValueError; TypeError/KeyError/etc. still propagate loudly.
 - F2-T2 non-blocking notes: (a) the `max_abs < MIN_MATERIAL_GEX`
   early return at GexDashboard.py:283 is functionally redundant —
   the combined floor already makes every sub-floor strike
