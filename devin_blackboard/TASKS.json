@@ -197,7 +197,7 @@
     "id": "F2-T3",
     "title": "Critic gate for F2",
     "role": "critic",
-    "status": "ready",
+    "status": "in_progress",
     "depends_on": [
       "F2-T2"
     ],
