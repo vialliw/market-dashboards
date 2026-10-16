@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F6-T4 done by Agent B — all 3 F6-T2 findings remediated, ACs 2/2 PASS)
+Last Updated: 2026-10-16 (F6-T3 done by Agent D — critic gate PASS, cycle F6 CLOSED)
 Current Branch: main
 
 ## Repo
@@ -690,13 +690,69 @@ CONSTRAINT: NO live yfinance calls; tests stay offline
   CAUGHT by the new tests. ACs: 2/2 PASS.
   Commits a6636f3, 025b530, 79954e1.
 
-## Ready
+- F6-T3 (D, done): critic gate PASS. Probe
+  devin_blackboard/probe_f6_t3.py — 20/20 checks.
+  pytest 78/78 (9.49s); zero network in tests (only
+  fixture meta.source string "yfinance").
+  (1) Live packet verdicts:
+      charts/TSM_ai_packet.json (post-fix) -> overall
+      PASS, exit 0: SCHEMA-01/NUMERIC-01/AVAIL-01a/01b/
+      01c/AGG-01/MAXPAIN-01/MAXPAIN-02/FLIP-01/IV-01/
+      COVER-01/FRESH-01 all PASS; SNAP-01 unperformed
+      (no --snapshot).
+      charts/TSM_ai_packet_prefix.json (pre-fix
+      artifact packet) -> overall FAIL, exit 1:
+      SCHEMA-01 FAIL (49 violations — metrics_unavailable
+      not a bool + all 6 max_pain_* fields absent on all
+      7 expiries), FLIP-01 FAIL (6 mismatches: observed
+      415/240/235/310/210 vs independent recompute
+      None/425/437.5/445/440 + nearest_gamma_flip 210
+      vs 460), IV-01 FAIL (36 unflagged IV>2.0);
+      NUMERIC-01/AGG-01/COVER-01/FRESH-01 PASS;
+      SNAP-01 + AVAIL-01a/b/c + MAXPAIN-01/02
+      unperformed — the pre-F5 packet carries no
+      metrics_unavailable flag, and flag-absent ->
+      skip/unperformed is the verified doctrine (F6-T2):
+      the artifact max_pain 225/230/235 packet FAILs via
+      schema non-conformance + flip/IV recomputes rather
+      than MAXPAIN re-verification. Reports:
+      devin_blackboard/f6t3_tsm_postfix_report.json +
+      f6t3_tsm_prefix_report.json.
+  (2) All three F6-T4 remediated defects re-verified
+      independently:
+      (a) honest ambiguous-band packet (band [70,130]
+      holds only the exported-0 strike 80; finite OI at
+      50/200; flat pain 750) -> MAXPAIN-02 'unperformed'
+      + exit 0, NEVER FAIL, in BOTH worlds
+      (fell_back+mpc=50 and mpc=80+selected flags);
+      4-case snapshot matrix: same-world -> PASS exit 0,
+      cross-world -> '4 constrained-field mismatch(es)'
+      FAIL + exit 1; MAXPAIN-01 unaffected (PASS, notes
+      the 3-way argmin tie).
+      (b) missing --snapshot file -> exit 1 + SNAP-01
+      FAIL, in-process AND via real CLI; no CHECKER-ERR
+      emitted; provenance snapshot_hash:null +
+      snapshot_hash_error.
+      (c) snapshot expiry 2030-06-20 absent from packet
+      -> SNAP-01 FAIL + exit 1, finding names the
+      expiry; packet's own expiry still reconciles
+      (MAXPAIN-02 PASS).
+  (3) No GexDashboard import: source has only docstring
+      mentions; fresh-interpreter sys.modules check ->
+      False.
+  (4) Diff audit: task-work range 286c36f..1d43d74
+      touches only WellnessCheck.py +
+      tests/test_wellness.py + tests/fixtures/* +
+      devin_blackboard/* +
+      docs/enhancements/wellness_check.md (adjudicated
+      N1); the wider F5-close..F6-end window additionally
+      contains cc72aeb (orchestrator doc commit:
+      GEX_FIX_REPORT.md + .gitignore artifact-dir
+      patterns, pre-F6-claim, benign). git status clean
+      except untracked devin_blackboard probe artifacts.
+      Cycle F6 CLOSED.
 
-- F6-T3 (D): critic gate — F6-T4 remediation is DONE:
-  all 3 F6-T2 findings fixed in WellnessCheck.py with
-  regression tests (pytest 78/78, probe 97/97, ACs
-  2/2 PASS). Awaiting critic verification of the
-  remediation to close cycle F6.
+## Ready
 
 ## Notes for reviewers
 

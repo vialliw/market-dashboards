@@ -1,0 +1,725 @@
+{
+  "overall_status": "FAIL",
+  "report_generated_utc": "2026-10-16T17:38:47Z",
+  "checker": "WellnessCheck.py",
+  "max_age_hours": 72.0,
+  "packet": {
+    "path": "charts\\TSM_ai_packet_prefix.json",
+    "sha256": "4eaa4ac65e4fa1fcb506862adcd6f1a7d9044cbf4d76a104fc6dbea6eefcd384",
+    "ticker": "TSM",
+    "generated_utc": "2026-10-16T15:11:19Z",
+    "schema_version": "1.0",
+    "expiries": 7
+  },
+  "snapshot": null,
+  "provenance": {
+    "packet_hash": "4eaa4ac65e4fa1fcb506862adcd6f1a7d9044cbf4d76a104fc6dbea6eefcd384",
+    "packet_path": "charts\\TSM_ai_packet_prefix.json",
+    "packet_generated_utc": "2026-10-16T15:11:19Z",
+    "snapshot_hash": null,
+    "snapshot_path": null,
+    "code_commit": "76cda3f3b52260c02f44a17be9796ade04f3824a",
+    "code_commit_note": null,
+    "schema_version": "1.0",
+    "per_expiry_counts": {
+      "2026-10-16": {
+        "strikes": 105,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-10-23": {
+        "strikes": 95,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-10-30": {
+        "strikes": 84,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-11-06": {
+        "strikes": 70,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-11-13": {
+        "strikes": 70,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-11-20": {
+        "strikes": 56,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      },
+      "2026-11-27": {
+        "strikes": 62,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": null
+      }
+    },
+    "counts_note": "finite_oi_rows / excluded_rows require --snapshot (OI-missingness provenance unperformed)"
+  },
+  "checks": [
+    {
+      "check_id": "SCHEMA-01",
+      "status": "FAIL",
+      "severity": "FAIL",
+      "detail": "49 schema violation(s)",
+      "findings": [
+        {
+          "expiry": "2026-10-16",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-13",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "metrics_unavailable",
+          "observed": null,
+          "expected": "required bool"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_constrained",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_candidate_band",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_band_fell_back",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_band_boundary_hit",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_selected_lowest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        },
+        {
+          "expiry": "2026-11-27",
+          "field": "max_pain_selected_highest_candidate",
+          "observed": "<absent>",
+          "expected": "required field (null allowed)"
+        }
+      ]
+    },
+    {
+      "check_id": "NUMERIC-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "all emitted numerics finite; spot>0; OI>=0; dates ISO",
+      "findings": []
+    },
+    {
+      "check_id": "SNAP-01",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no snapshot: raw-row reconciliation and OI-missingness provenance not performed",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01a",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no expiry carried a bool metrics_unavailable flag",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01b",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "reason-code check unperformed (no snapshot) | 2026-10-16: flag absent \u2014 skipped | 2026-10-23: flag absent \u2014 skipped | 2026-10-30: flag absent \u2014 skipped | 2026-11-06: flag absent \u2014 skipped | 2026-11-13: flag absent \u2014 skipped | 2026-11-20: flag absent \u2014 skipped | 2026-11-27: flag absent \u2014 skipped",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01c",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no expiry carried a bool metrics_unavailable flag",
+      "findings": []
+    },
+    {
+      "check_id": "AGG-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "strike->expiry->book gex sums reconcile (8 sums checked)",
+      "findings": []
+    },
+    {
+      "check_id": "MAXPAIN-01",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no available expiry to recompute",
+      "findings": []
+    },
+    {
+      "check_id": "MAXPAIN-02",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no available expiry with finite spot",
+      "findings": []
+    },
+    {
+      "check_id": "FLIP-01",
+      "status": "FAIL",
+      "severity": "FAIL",
+      "detail": "6 flip mismatch(es)",
+      "findings": [
+        {
+          "expiry": "2026-10-16",
+          "field": "gamma_flip",
+          "observed": 415.0,
+          "expected": "independent recompute None"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "gamma_flip",
+          "observed": 240.0,
+          "expected": "independent recompute 425.0"
+        },
+        {
+          "expiry": "2026-10-30",
+          "field": "gamma_flip",
+          "observed": 235.0,
+          "expected": "independent recompute 437.5"
+        },
+        {
+          "expiry": "2026-11-06",
+          "field": "gamma_flip",
+          "observed": 310.0,
+          "expected": "independent recompute 445.0"
+        },
+        {
+          "expiry": "2026-11-20",
+          "field": "gamma_flip",
+          "observed": 210.0,
+          "expected": "independent recompute 440.0"
+        },
+        {
+          "expiry": null,
+          "field": "nearest_gamma_flip",
+          "observed": 210.0,
+          "expected": "independent recompute 460.0"
+        }
+      ]
+    },
+    {
+      "check_id": "IV-01",
+      "status": "FAIL",
+      "severity": "FAIL",
+      "detail": "36 IV-provenance violation(s)",
+      "findings": [
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[165.0].implied_volatility",
+          "observed": 8.278323536987305,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[170.0].implied_volatility",
+          "observed": 7.790042670288086,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[175.0].implied_volatility",
+          "observed": 7.464847600097656,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[180.0].implied_volatility",
+          "observed": 7.522464790649415,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[185.0].implied_volatility",
+          "observed": 7.634769202880859,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[190.0].implied_volatility",
+          "observed": 7.520511442260741,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[195.0].implied_volatility",
+          "observed": 7.273929604187011,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[200.0].implied_volatility",
+          "observed": 6.789555102233885,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[210.0].implied_volatility",
+          "observed": 6.707035534667968,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[220.0].implied_volatility",
+          "observed": 6.220217068481445,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[230.0].implied_volatility",
+          "observed": 5.425294116821289,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[240.0].implied_volatility",
+          "observed": 5.359864110717773,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[250.0].implied_volatility",
+          "observed": 4.835451377563476,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[260.0].implied_volatility",
+          "observed": 4.365237277832031,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[270.0].implied_volatility",
+          "observed": 4.114749426879882,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[280.0].implied_volatility",
+          "observed": 3.9128453823852536,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[290.0].implied_volatility",
+          "observed": 3.6623573703002923,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[300.0].implied_volatility",
+          "observed": 3.2441430541992187,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[310.0].implied_volatility",
+          "observed": 3.0166046276855463,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[320.0].implied_volatility",
+          "observed": 2.654054224243164,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[330.0].implied_volatility",
+          "observed": 2.6667492315673833,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[340.0].implied_volatility",
+          "observed": 2.1955594329833983,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[532.5].implied_volatility",
+          "observed": 2.205082612304687,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[537.5].implied_volatility",
+          "observed": 2.2734418164062498,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[542.5].implied_volatility",
+          "observed": 2.339847900390624,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[545.0].implied_volatility",
+          "observed": 2.373050942382812,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[547.5].implied_volatility",
+          "observed": 2.4062539843749997,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[560.0].implied_volatility",
+          "observed": 2.8730475048828126,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[570.0].implied_volatility",
+          "observed": 3.0190457379150395,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[630.0].implied_volatility",
+          "observed": 3.406251484375,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[640.0].implied_volatility",
+          "observed": 2.843752890625,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-16",
+          "field": "strike[660.0].implied_volatility",
+          "observed": 3.7031257421875,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "strike[225.0].implied_volatility",
+          "observed": 2.0958282369995116,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "strike[230.0].implied_volatility",
+          "observed": 2.3520549011230463,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "strike[235.0].implied_volatility",
+          "observed": 2.1376978466796874,
+          "expected": "unflagged IV > 2.0"
+        },
+        {
+          "expiry": "2026-10-23",
+          "field": "strike[240.0].implied_volatility",
+          "observed": 2.03772260345459,
+          "expected": "unflagged IV > 2.0"
+        }
+      ]
+    },
+    {
+      "check_id": "COVER-01",
+      "status": "PASS",
+      "severity": "WARN",
+      "detail": "coverage adequate; missing-OI share unperformed (no snapshot)",
+      "findings": []
+    },
+    {
+      "check_id": "FRESH-01",
+      "status": "PASS",
+      "severity": "WARN",
+      "detail": "packet age 2.5h",
+      "findings": []
+    }
+  ],
+  "summary": {
+    "PASS": 4,
+    "WARN": 0,
+    "FAIL": 3,
+    "unperformed": 6
+  }
+}

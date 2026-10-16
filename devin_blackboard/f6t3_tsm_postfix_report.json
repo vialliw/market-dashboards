@@ -1,0 +1,176 @@
+{
+  "overall_status": "PASS",
+  "report_generated_utc": "2026-10-16T17:38:46Z",
+  "checker": "WellnessCheck.py",
+  "max_age_hours": 72.0,
+  "packet": {
+    "path": "charts\\TSM_ai_packet.json",
+    "sha256": "a6593fc79f6cb5a6925e224e214a15e115f1acaea0c97b2d5006d14cdf233d3b",
+    "ticker": "TSM",
+    "generated_utc": "2026-10-16T15:11:37Z",
+    "schema_version": "1.0",
+    "expiries": 7
+  },
+  "snapshot": null,
+  "provenance": {
+    "packet_hash": "a6593fc79f6cb5a6925e224e214a15e115f1acaea0c97b2d5006d14cdf233d3b",
+    "packet_path": "charts\\TSM_ai_packet.json",
+    "packet_generated_utc": "2026-10-16T15:11:37Z",
+    "snapshot_hash": null,
+    "snapshot_path": null,
+    "code_commit": "76cda3f3b52260c02f44a17be9796ade04f3824a",
+    "code_commit_note": null,
+    "schema_version": "1.0",
+    "per_expiry_counts": {
+      "2026-10-16": {
+        "strikes": 105,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 32,
+        "metrics_unavailable": false
+      },
+      "2026-10-23": {
+        "strikes": 95,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 4,
+        "metrics_unavailable": false
+      },
+      "2026-10-30": {
+        "strikes": 84,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": false
+      },
+      "2026-11-06": {
+        "strikes": 70,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": false
+      },
+      "2026-11-13": {
+        "strikes": 70,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": false
+      },
+      "2026-11-20": {
+        "strikes": 56,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": false
+      },
+      "2026-11-27": {
+        "strikes": 62,
+        "finite_oi_rows": null,
+        "excluded_rows": null,
+        "stale_iv_rows": 0,
+        "metrics_unavailable": false
+      }
+    },
+    "counts_note": "finite_oi_rows / excluded_rows require --snapshot (OI-missingness provenance unperformed)"
+  },
+  "checks": [
+    {
+      "check_id": "SCHEMA-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "required fields/types present; expiry and strike keys unique; schema_version supported",
+      "findings": []
+    },
+    {
+      "check_id": "NUMERIC-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "all emitted numerics finite; spot>0; OI>=0; dates ISO",
+      "findings": []
+    },
+    {
+      "check_id": "SNAP-01",
+      "status": "unperformed",
+      "severity": "FAIL",
+      "detail": "no snapshot: raw-row reconciliation and OI-missingness provenance not performed",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01a",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "flag/null contract holds on 7 expiry(ies)",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01b",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "eligibility verdict verified on 7 expiry(ies); reason-code check unperformed (no snapshot)",
+      "findings": []
+    },
+    {
+      "check_id": "AVAIL-01c",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "payout metrics null only under unavailability on 7 expiry(ies); gamma_flip independence respected (1 null while available, 0 real while unavailable)",
+      "findings": []
+    },
+    {
+      "check_id": "AGG-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "strike->expiry->book gex sums reconcile (8 sums checked)",
+      "findings": []
+    },
+    {
+      "check_id": "MAXPAIN-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "canonical argmin matches on 7 expiry(ies)",
+      "findings": []
+    },
+    {
+      "check_id": "MAXPAIN-02",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "constrained argmin + band flags match on 7 expiry(ies)",
+      "findings": []
+    },
+    {
+      "check_id": "FLIP-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "material crossings match on 8 field(s)",
+      "findings": []
+    },
+    {
+      "check_id": "IV-01",
+      "status": "PASS",
+      "severity": "FAIL",
+      "detail": "stale-IV contract holds on 542 strike(s) (36 flagged)",
+      "findings": []
+    },
+    {
+      "check_id": "COVER-01",
+      "status": "PASS",
+      "severity": "WARN",
+      "detail": "coverage adequate; missing-OI share unperformed (no snapshot)",
+      "findings": []
+    },
+    {
+      "check_id": "FRESH-01",
+      "status": "PASS",
+      "severity": "WARN",
+      "detail": "packet age 2.5h",
+      "findings": []
+    }
+  ],
+  "summary": {
+    "PASS": 12,
+    "WARN": 0,
+    "FAIL": 0,
+    "unperformed": 1
+  }
+}
