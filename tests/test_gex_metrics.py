@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
+import GexDashboard
 from GexDashboard import (
     MIN_MATERIAL_GEX,
     build_ai_packet,
@@ -968,3 +969,316 @@ def test_meta_data_quality_notes_oi_conflation():
     assert "open_interest" in dq
     assert "conflate" in dq
     assert "missing" in dq
+
+
+# =========================
+# Degenerate-chain eligibility
+# =========================
+def test_degenerate_single_strike_expiry():
+    """Live INTC 2026-10-19 case: the expiry chain
+    has ONE strike (call OI 2, put OI 0). The
+    payout argmin is mathematically valid (190) but
+    economically meaningless — payout is 0 at the
+    only candidate and there is no second strike
+    to discriminate against. The expiry must emit
+    metrics_unavailable:true + data_quality:
+    'insufficient_data' with explicit null payout
+    fields, NOT the vacuous argmin."""
+    exp = "2026-10-19"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [190.0, 190.0],
+        "type": ["call", "put"],
+        "openInterest": [2, 0],
+        "gex": [5e4, -1e4],
+        "impliedVolatility": [0.30, 0.30],
+        "expiry": [exp_dt] * 2,
+    })
+
+    packet = build_ai_packet("TEST", df, 185.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+
+    for field in (
+        "max_pain",
+        "max_pain_constrained",
+        "max_pain_candidate_band",
+        "max_pain_band_fell_back",
+        "max_pain_band_boundary_hit",
+        "max_pain_selected_lowest_candidate",
+        "max_pain_selected_highest_candidate",
+    ):
+        assert e[field] is None, field
+
+    # a single strike can never host a sign
+    # crossing, so gamma_flip is an honest null
+    # here too (computed, not forced)
+    assert e["gamma_flip"] is None
+
+    # the strike row itself is still exported
+    assert len(e["strikes"]) == 1
+    assert e["strikes"][0]["strike"] == 190.0
+    assert e["strikes"][0]["call_oi"] == 2
+
+    # the raw functions are NOT 'fixed' — the
+    # vacuous 190.0 argmin is still what they
+    # return on direct misuse; the eligibility
+    # gate lives at the packet/plot layer
+    assert compute_max_pain(df) == 190.0
+
+
+def test_payout_eligibility_boundary():
+    """Boundary of the <2 distinct finite-OI
+    strikes rule: a chain with 2 distinct strikes
+    carrying finite OI is eligible (real metrics),
+    while a 1-strike chain — even with BOTH the
+    call and put row finite — is degenerate, as is
+    a 2-strike chain where only one strike has
+    finite OI."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    # eligible: two distinct strikes, finite OI
+    two = pd.DataFrame({
+        "strike": [100.0, 110.0, 100.0, 110.0],
+        "type": ["call", "call", "put", "put"],
+        "openInterest": [500, 300, 200, 50],
+        "gex": [-2e5, 1e5, 1e5, 1e5],
+        "impliedVolatility": [0.30] * 4,
+        "expiry": [exp_dt] * 4,
+    })
+
+    packet = build_ai_packet("TEST", two, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is False
+    assert "data_quality" not in e
+    assert e["max_pain"] == _independent_max_pain(two)
+
+    # ineligible: one distinct strike even though
+    # BOTH rows carry finite OI — the argmin over
+    # a single candidate is vacuous
+    one = pd.DataFrame({
+        "strike": [100.0, 100.0],
+        "type": ["call", "put"],
+        "openInterest": [10, 20],
+        "gex": [1e5, -2e5],
+        "impliedVolatility": [0.30, 0.30],
+        "expiry": [exp_dt] * 2,
+    })
+
+    packet = build_ai_packet("TEST", one, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+    assert e["max_pain"] is None
+
+    # ineligible: two strikes but only one carries
+    # finite OI — the NaN-OI row at 110 drops out
+    one_finite = pd.DataFrame({
+        "strike": [100.0, 110.0, 100.0, 110.0],
+        "type": ["call", "call", "put", "put"],
+        "openInterest": [500, np.nan, 200, np.nan],
+        "gex": [-2e5, np.nan, 1e5, np.nan],
+        "impliedVolatility": [0.30] * 4,
+        "expiry": [exp_dt] * 4,
+    })
+
+    packet = build_ai_packet(
+        "TEST", one_finite, 105.0, [exp]
+    )
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+    assert e["max_pain"] is None
+
+
+def test_zero_total_oi_chain_insufficient_data():
+    """A chain with >=2 distinct finite-OI strikes
+    but ZERO total OI produces an all-zero payout
+    curve — every candidate is an argmin, so the
+    'max pain' strike is meaningless. It must be
+    flagged insufficient_data, not emit the
+    lowest-strike artifact."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [100.0, 110.0, 100.0, 110.0],
+        "type": ["call", "call", "put", "put"],
+        "openInterest": [0, 0, 0, 0],
+        "gex": [-2e5, 1e5, 1e5, 1e5],
+        "impliedVolatility": [0.30] * 4,
+        "expiry": [exp_dt] * 4,
+    })
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+    assert e["max_pain"] is None
+    # gamma_flip is OI-independent and this gex
+    # profile has a material crossing at 110 —
+    # partial availability: it is still emitted
+    assert e["gamma_flip"] == 110.0
+
+
+def test_partial_availability_gamma_flip_survives():
+    """Per-metric availability: an expiry whose
+    payout inputs are degenerate but whose gex
+    profile has a material crossing must emit
+    metrics_unavailable:true (payout fields null)
+    while STILL reporting the real gamma_flip —
+    'no usable payout data' and 'no crossing' are
+    distinct states."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    # payout-degenerate: only strike 100 has
+    # finite OI. The gex profile crosses
+    # neg->pos at 110 (the NaN-OI row still
+    # carries finite gex in this synthetic df;
+    # on the real data path NaN OI implies
+    # NaN gex via compute_gex, but the metrics
+    # must not presume that coupling).
+    df = pd.DataFrame({
+        "strike": [100.0, 110.0],
+        "type": ["call", "call"],
+        "openInterest": [2, np.nan],
+        "gex": [-1e5, 2e5],
+        "impliedVolatility": [0.30, 0.30],
+        "expiry": [exp_dt] * 2,
+    })
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+
+    for field in (
+        "max_pain",
+        "max_pain_constrained",
+        "max_pain_candidate_band",
+        "max_pain_band_fell_back",
+        "max_pain_band_boundary_hit",
+        "max_pain_selected_lowest_candidate",
+        "max_pain_selected_highest_candidate",
+    ):
+        assert e[field] is None, field
+
+    # the flip is real and is still reported
+    assert e["gamma_flip"] == 110.0
+
+
+# =========================
+# Scoped failure absorption
+# =========================
+def _healthy_book(exp_dt):
+    """A plain eligible expiry used by the
+    injection tests below."""
+    return pd.DataFrame({
+        "strike": [100.0, 110.0, 100.0, 110.0],
+        "type": ["call", "call", "put", "put"],
+        "openInterest": [500, 300, 200, 50],
+        "gex": [-2e5, 1e5, 1e5, 1e5],
+        "impliedVolatility": [0.30] * 4,
+        "expiry": [exp_dt] * 4,
+    })
+
+
+def test_unrelated_valueerror_still_propagates(
+    monkeypatch,
+):
+    """The scoped absorption must NOT mask an
+    unrelated ValueError: injecting a ValueError
+    whose message is NOT numpy's empty-argmin
+    error into the payout path must propagate
+    and kill the packet build loudly."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+    df = _healthy_book(exp_dt)
+
+    def boom(frame, spot=None):
+        raise ValueError("unrelated bug state")
+
+    monkeypatch.setattr(
+        GexDashboard, "compute_max_pain", boom
+    )
+
+    with pytest.raises(
+        ValueError, match="unrelated bug"
+    ):
+        build_ai_packet("TEST", df, 105.0, [exp])
+
+
+def test_known_empty_argmin_valueerror_absorbed(
+    monkeypatch,
+):
+    """Belt-and-suspenders: if the payout path
+    raises numpy's 'attempt to get argmin of an
+    empty sequence' DESPITE the eligibility
+    pre-check, it is still the recognized
+    missing-data failure mode and degrades to
+    metrics_unavailable + insufficient_data."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+    df = _healthy_book(exp_dt)
+
+    def boom(frame, spot=None):
+        raise ValueError(
+            "attempt to get argmin of an "
+            "empty sequence"
+        )
+
+    monkeypatch.setattr(
+        GexDashboard, "compute_max_pain", boom
+    )
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    assert e["metrics_unavailable"] is True
+    assert e["data_quality"] == "insufficient_data"
+    assert e["max_pain"] is None
+    # gamma_flip is unaffected by the payout
+    # failure — still computed and real
+    assert e["gamma_flip"] == 110.0
+
+
+def test_non_valueerror_failures_propagate(
+    monkeypatch,
+):
+    """Regression-guards the F4 review gap: only
+    the scoped ValueError is tolerated at the
+    packet boundary — a non-ValueError failure
+    inside the metric path must propagate."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+    df = _healthy_book(exp_dt)
+
+    def key_boom(frame, spot=None):
+        raise KeyError("openInterest")
+
+    monkeypatch.setattr(
+        GexDashboard, "compute_max_pain", key_boom
+    )
+
+    with pytest.raises(KeyError):
+        build_ai_packet("TEST", df, 105.0, [exp])
+
+    def type_boom(frame, spot=None):
+        raise TypeError("object dtype")
+
+    monkeypatch.setattr(
+        GexDashboard, "compute_max_pain", type_boom
+    )
+
+    with pytest.raises(TypeError):
+        build_ai_packet("TEST", df, 105.0, [exp])

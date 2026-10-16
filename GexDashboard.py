@@ -395,42 +395,135 @@ def compute_gamma_flip(df, spot=None):
 # =========================
 # Per-Expiry Metric Bundle
 # =========================
+
+# A payout argmin is only meaningful when the
+# usable chain has at least this many DISTINCT
+# strikes carrying finite open interest. A
+# single-strike chain (live INTC 2026-10-19:
+# one strike, call OI 2, put OI 0) yields a
+# trivially 'correct' argmin — the payout is 0
+# at that strike and there is no second
+# candidate to discriminate against — so it
+# carries no economic information.
+MIN_PAYOUT_STRIKES = 2
+
+
+def _payout_ineligibility(sub):
+    """Eligibility pre-check for the payout
+    metrics (max_pain / constrained + flags).
+
+    Returns None when the slice can support a
+    meaningful payout argmin, else the
+    per-expiry 'data_quality' reason string:
+
+      'no_finite_oi'     - no row carries a
+                           finite strike AND
+                           finite openInterest
+      'insufficient_data'- the usable chain is
+                           degenerate: fewer
+                           than MIN_PAYOUT_
+                           STRIKES distinct
+                           finite-OI strikes
+                           (single-candidate
+                           argmin is vacuous),
+                           or the total finite
+                           OI is zero (every
+                           pain sum is 0, so
+                           every candidate is
+                           an argmin)"""
+
+    fin = _finite_oi_rows(sub)
+
+    if len(fin) == 0:
+        return "no_finite_oi"
+
+    if (
+        fin['strike'].nunique()
+        < MIN_PAYOUT_STRIKES
+        or fin['openInterest'].sum() <= 0
+    ):
+        return "insufficient_data"
+
+    return None
+
+
 def _per_expiry_metrics(sub, spot):
     """Compute one expiry's max_pain /
     constrained max_pain / gamma_flip bundle.
 
-    Returns None when the slice cannot support
-    the payout metrics — e.g. an expiry whose
-    every row carries NaN openInterest (the
-    live SPY 2026-10-29 chain) or one with no
-    rows at all. The raw functions raise
-    ValueError loudly on such input for direct
-    callers; the packet/plot call sites absorb
-    it HERE so one unusable expiry degrades to
-    explicit nulls + a flag instead of
-    aborting the whole ticker. Only ValueError
-    is tolerated — any other failure still
-    propagates."""
+    Always returns a dict:
+
+      max_pain / max_pain_constrained - real
+        values, or explicit nulls when the
+        slice fails payout eligibility (see
+        _payout_ineligibility)
+      gamma_flip - computed independently of
+        OI (it reads the gex profile), so it
+        may still carry a real crossing on an
+        expiry whose payout metrics are
+        unavailable; None means 'no material
+        crossing'
+      unavailable - None when the payout
+        metrics were computed, else the
+        data_quality reason ('no_finite_oi' /
+        'insufficient_data')
+
+    Eligibility is checked BEFORE calling the
+    payout functions, so they are never
+    invoked on an unusable slice. A
+    belt-and-suspenders except absorbs ONLY
+    the known missing-data ValueError
+    ('attempt to get argmin of an empty
+    sequence') — every other ValueError and
+    all non-ValueError failures propagate."""
+
+    metrics = {
+        "max_pain": None,
+        "max_pain_constrained": None,
+        "gamma_flip": compute_gamma_flip(
+            sub,
+            spot=spot
+        ),
+        "unavailable": _payout_ineligibility(
+            sub
+        ),
+    }
+
+    if metrics["unavailable"] is not None:
+        return metrics
 
     try:
 
-        return {
-            "max_pain": compute_max_pain(sub),
-            "max_pain_constrained": (
-                compute_max_pain_constrained(
-                    sub,
-                    spot=spot
-                )
-            ),
-            "gamma_flip": compute_gamma_flip(
+        metrics["max_pain"] = (
+            compute_max_pain(sub)
+        )
+        metrics["max_pain_constrained"] = (
+            compute_max_pain_constrained(
                 sub,
                 spot=spot
-            ),
-        }
+            )
+        )
 
-    except ValueError:
+    except ValueError as exc:
 
-        return None
+        # The slice already passed the
+        # eligibility pre-check, so the ONLY
+        # still-expected failure is numpy's
+        # empty-candidate argmin. Anything
+        # else is an unrelated bug — let it
+        # propagate instead of masking it as
+        # a data problem.
+        if (
+            "attempt to get argmin of an "
+            "empty sequence"
+        ) not in str(exc):
+            raise
+
+        metrics["unavailable"] = (
+            "insufficient_data"
+        )
+
+    return metrics
 
 
 # =========================
@@ -786,13 +879,14 @@ def build_ai_packet(
         )
 
         # One unusable expiry (e.g. every row
-        # missing openInterest) must not abort
-        # the whole ticker: the raw metric fns
-        # raise ValueError on insufficient
-        # data, which _per_expiry_metrics
-        # absorbs so this expiry degrades to
-        # explicit nulls + a flag — never
-        # artifact values.
+        # missing openInterest, or a degenerate
+        # single-strike chain) must not abort
+        # the whole ticker: _per_expiry_metrics
+        # pre-checks payout eligibility so this
+        # expiry degrades to explicit nulls +
+        # a flag — never artifact values.
+        # gamma_flip is computed independently
+        # and may still carry a real value.
         metrics = _per_expiry_metrics(sub, spot)
 
         call_walls, put_walls = compute_top_walls(sub)
@@ -812,13 +906,9 @@ def build_ai_packet(
 
             atm_iv = None
 
-        gamma_flip = (
-            metrics["gamma_flip"]
-            if metrics is not None
-            else None
-        )
+        gamma_flip = metrics["gamma_flip"]
 
-        if metrics is not None:
+        if metrics["unavailable"] is None:
 
             mpc = metrics["max_pain_constrained"]
 
@@ -875,11 +965,17 @@ def build_ai_packet(
 
         else:
 
-            # Explicit nulls for every metric
-            # field plus a machine-readable
-            # reason — consumers can detect
-            # the unavailability instead of
-            # reading an artifact strike.
+            # Explicit nulls for every PAYOUT
+            # metric field plus a machine-
+            # readable reason — consumers can
+            # detect the unavailability instead
+            # of reading an artifact strike.
+            # gamma_flip is still emitted: it
+            # is computed from the gex profile
+            # (independent of OI eligibility),
+            # so a real crossing may be
+            # reported even when the payout
+            # metrics are null.
             metric_fields = {
 
                 "max_pain": None,
@@ -898,13 +994,15 @@ def build_ai_packet(
                 "max_pain_selected_highest_candidate":
                     None,
 
-                "gamma_flip": None,
+                "gamma_flip": (
+                    float(gamma_flip)
+                    if gamma_flip
+                    else None
+                ),
 
-                "data_quality": (
-                    "no_finite_oi"
-                    if len(_finite_oi_rows(sub)) == 0
-                    else "insufficient_data"
-                )
+                "data_quality": metrics[
+                    "unavailable"
+                ]
             }
 
         strike_objects = []
@@ -988,7 +1086,8 @@ def build_ai_packet(
             **metric_fields,
 
             "metrics_unavailable": bool(
-                metrics is None
+                metrics["unavailable"]
+                is not None
             ),
 
             "atm_iv": (
@@ -1054,15 +1153,26 @@ def build_ai_packet(
                 "for that expiry. Expiries flagged "
                 "'metrics_unavailable': true had "
                 "insufficient usable data for the "
-                "payout metrics (e.g. every "
-                "openInterest value missing); all "
-                "of their max_pain*, band-flag "
-                "and gamma_flip fields are "
-                "explicit nulls — never artifact "
-                "values — and 'data_quality' on "
-                "the expiry gives the reason. "
-                "Whole-book metrics are "
-                "unaffected."
+                "payout metrics: 'data_quality' on "
+                "the expiry is 'no_finite_oi' "
+                "(every openInterest value "
+                "missing) or 'insufficient_data' "
+                "(the usable chain is degenerate "
+                "— fewer than 2 distinct strikes "
+                "carrying finite open interest, "
+                "or zero total finite OI — so the "
+                "payout argmin would be "
+                "mathematically valid but "
+                "economically meaningless). All "
+                "of their max_pain* and band-flag "
+                "fields are explicit nulls — "
+                "never artifact values. "
+                "'gamma_flip' is computed from "
+                "the gex profile independently of "
+                "OI eligibility, so it may still "
+                "carry a real crossing on a "
+                "flagged expiry. Whole-book "
+                "metrics are unaffected."
             ),
 
             "metric_definitions": {
@@ -1122,14 +1232,41 @@ def build_ai_packet(
                 "metrics_unavailable": (
                     "True when an expiry's rows "
                     "could not support the payout "
-                    "metrics (e.g. every "
-                    "openInterest value missing, "
-                    "'data_quality' = "
-                    "'no_finite_oi'). All "
-                    "max_pain*/gamma_flip fields "
-                    "for that expiry are explicit "
-                    "nulls rather than artifact "
-                    "values."
+                    "metrics; 'data_quality' on "
+                    "the expiry is 'no_finite_oi' "
+                    "(every openInterest value "
+                    "missing) or "
+                    "'insufficient_data' "
+                    "(degenerate chain: fewer "
+                    "than 2 distinct finite-OI "
+                    "strikes, or zero total "
+                    "finite OI — see "
+                    "'payout_eligibility'). All "
+                    "max_pain*/band-flag fields "
+                    "for that expiry are "
+                    "explicit nulls rather than "
+                    "artifact values. gamma_flip "
+                    "is an independent metric and "
+                    "may still be non-null."
+                ),
+
+                "payout_eligibility": (
+                    "max_pain / "
+                    "max_pain_constrained are "
+                    "only emitted when the expiry "
+                    "has at least 2 DISTINCT "
+                    "strikes carrying finite "
+                    "openInterest AND positive "
+                    "total finite OI. A "
+                    "single-strike chain has a "
+                    "vacuous argmin (one "
+                    "candidate, payout 0 at it) "
+                    "and a zero-OI chain makes "
+                    "every candidate an argmin "
+                    "— both are flagged "
+                    "'insufficient_data' instead "
+                    "of reporting a meaningless "
+                    "strike."
                 )
             }
         },
@@ -1406,15 +1543,14 @@ def plot_gex_dashboard(
 
         # Same tolerance as build_ai_packet:
         # one unusable expiry (e.g. all-NaN
-        # openInterest) degrades to omitted
-        # markers + a note, not a dead ticker.
+        # openInterest, or a degenerate
+        # single-strike chain) degrades to
+        # omitted markers + a note, not a dead
+        # ticker. gamma_flip is computed
+        # independently and may still draw.
         metrics = _per_expiry_metrics(sub, spot)
 
-        gamma_flip = (
-            metrics["gamma_flip"]
-            if metrics is not None
-            else None
-        )
+        gamma_flip = metrics["gamma_flip"]
 
         call_walls, put_walls = (
             compute_top_walls(sub)
@@ -1548,7 +1684,7 @@ def plot_gex_dashboard(
         # =========================
         # Max Pain
         # =========================
-        if metrics is not None:
+        if metrics["unavailable"] is None:
 
             # Canonical unconstrained max pain.
             fig.add_vline(
@@ -1620,12 +1756,14 @@ def plot_gex_dashboard(
             # No usable payout data for this
             # expiry — mark the subplot instead
             # of drawing artifact markers.
+            # gamma_flip is independent of OI
+            # eligibility and may still draw.
             fig.add_annotation(
                 x=spot,
                 y=oi_max * 0.8,
                 text=(
-                    "max_pain / gamma_flip "
-                    "unavailable (no finite OI)"
+                    "max_pain unavailable "
+                    f"({metrics['unavailable']})"
                 ),
                 showarrow=False,
                 row=i,
