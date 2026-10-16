@@ -635,7 +635,7 @@
     "id": "F6-T5",
     "title": "Remediate ChatGPT impl-review concerns: MAXPAIN-01 ambiguity + mutation documentation",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F6-T4"
     ],

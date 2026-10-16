@@ -1049,13 +1049,37 @@ def check_agg(packet):
     )
 
 
-def check_max_pain(packet):
+def check_max_pain(packet, raw_index=None):
     """MAXPAIN-01: independent canonical recompute —
     packet max_pain must equal the unconstrained payout
-    argmin on the exported rows (exact ==; ties counted)."""
+    argmin on the exported rows (exact ==; ties counted).
+
+    Candidate-set ambiguity (same doctrine as
+    MAXPAIN-02): exported OI=0 conflates a true-zero raw
+    row (a real payout candidate) with a missing-NaN raw
+    row (excluded from the candidate set entirely — see
+    AVAIL-01b). An exported-0 strike that ties the
+    minimum payout BELOW the finite-OI minimizer wins the
+    ascending-first argmin — flipping the expected value
+    (e.g. calls at 90/100/110 with raw OI NaN/1/1 export
+    as 0/1/1: production argmin is 100, but the exported
+    strike set alone yields 90). Without --snapshot an
+    expiry whose argmin differs between the extreme
+    hypotheses (all exported-0 strikes real vs all
+    dropped) is honestly 'unperformed' — never a FAIL on
+    a possibly-honest packet. Identical endpoint argmins
+    are ambiguity-proof: ambiguous strikes carry zero OI,
+    so they add only zero-pain terms and an argmin below
+    the unambiguous minimizer under ANY ambiguous-subset
+    removal would already win under the all-included
+    hypothesis (the reported tie count is annotation
+    only). With --snapshot the reconciled raw finite-OI
+    rows are exactly the production candidate set and a
+    true mismatch is a FAIL."""
     findings = []
     evaluated = 0
     skipped = 0
+    ambiguous = []
     tie_notes = []
     for e in _expiries(packet) or []:
         if not isinstance(e, dict):
@@ -1065,8 +1089,33 @@ def check_max_pain(packet):
         if mu is not False:
             skipped += 1
             continue
+
+        if (
+            raw_index is not None
+            and raw_index.oi_rows(exp) is not None
+        ):
+            # reconciled: raw finite-OI rows are exactly
+            # production's usable/candidate rows
+            expected, ties = _ref_max_pain(
+                _raw_payout_rows(raw_index.rows(exp)))
+        else:
+            strikes = _strikes(e)
+            expected, ties = _ref_max_pain(strikes)
+            unambig = [
+                s for s in strikes
+                if isinstance(s, dict)
+                and not _ambiguous_exported_strike(s)
+            ]
+            if len(unambig) != len(strikes):
+                expected0, _ = _ref_max_pain(unambig)
+                if expected != expected0:
+                    # verdict hinges on exported-0 strikes
+                    # that may have been missing-NaN —
+                    # cannot honestly PASS or FAIL
+                    ambiguous.append(exp)
+                    continue
+
         evaluated += 1
-        expected, ties = _ref_max_pain(_strikes(e))
         got = e.get("max_pain")
         if ties > 1:
             tie_notes.append(f"{exp}: {ties}-way argmin tie")
@@ -1076,16 +1125,28 @@ def check_max_pain(packet):
                 f"independent argmin {expected}",
                 ties=ties))
 
-    if evaluated == 0:
+    if evaluated == 0 and not ambiguous:
         return _result(
             "MAXPAIN-01", "unperformed",
             "no available expiry to recompute")
-    status = "FAIL" if findings else "PASS"
+    if findings:
+        status = "FAIL"
+    elif ambiguous:
+        status = "unperformed"
+    else:
+        status = "PASS"
     detail = (
         f"{len(findings)} max_pain mismatch(es)"
         if findings else
         f"canonical argmin matches on {evaluated} "
         "expiry(ies)")
+    if ambiguous:
+        detail += (
+            f"; {len(ambiguous)} expiry(ies) "
+            "unverifiable — verdict depends on exported-0 "
+            "strikes that may have been missing-NaN "
+            f"({', '.join(str(x) for x in ambiguous)}; "
+            "reconcile via --snapshot)")
     if skipped:
         detail += f"; {skipped} unavailable expiry(ies) skipped"
     if tie_notes:
@@ -1757,7 +1818,7 @@ def validate_packet(packet, snapshot_path=None,
     checks.append(check_avail_b(packet, raw_index))
     checks.append(check_avail_c(packet))
     checks.append(check_agg(packet))
-    checks.append(check_max_pain(packet))
+    checks.append(check_max_pain(packet, raw_index))
     checks.append(check_max_pain_constrained(packet, raw_index))
     checks.append(check_flip(packet))
     checks.append(check_iv(packet))

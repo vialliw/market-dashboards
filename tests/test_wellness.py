@@ -1040,6 +1040,327 @@ def test_snapshot_raw_only_expiry_fails(tmp_path):
 
 
 # =========================
+# F6-T5 regressions: MAXPAIN-01 exported-0/NaN
+# candidate ambiguity (ChatGPT review concern C1)
+# =========================
+
+def _mp01_strikes():
+    """ChatGPT C1 reproduction: calls at 90/100/110 with
+    raw OI NaN/1/1 export IDENTICALLY to raw OI 0/1/1 —
+    strike 90 is ambiguous (exported 0 conflates
+    true-zero with missing-NaN)."""
+    return [
+        _strike(90, co=0, po=0, cg=0.0),
+        _strike(100, co=1, po=0, cg=-0.01),
+        _strike(110, co=1, po=0, cg=0.01),
+    ]
+
+
+def _mp01_packet(nan_world):
+    """nan_world=True -> metrics as produced when raw 90
+    was all-NaN (dropped): candidate set {100,110},
+    canonical argmin 100. False -> raw 90 was a real
+    0-OI candidate: flat zero payout on [90,100] ->
+    ascending-first argmin 90 (2-way tie)."""
+    m = {
+        "max_pain": 100.0 if nan_world else 90.0,
+        "max_pain_constrained": 100.0 if nan_world else 90.0,
+        "candidate_band": [70.0, 130.0],
+        "band_fell_back": False,
+        "band_boundary_hit": False,
+        # argmin is the lowest candidate in BOTH worlds
+        "selected_lowest_candidate": True,
+        "selected_highest_candidate": False,
+        "gamma_flip": 110.0,  # -0.01@100 -> +0.01@110
+    }
+    e = _mk_expiry(
+        "2027-01-15", _mp01_strikes(), metrics=m)
+    return _mk_packet([e], nearest_gamma_flip=110.0)
+
+
+def _mp01_snapshot(tmp_path, strike90_oi, name):
+    """Raw rows matching _mp01_strikes() exports
+    (NaN->0 collapse permitted); strike90_oi may be
+    float('nan')."""
+    df = _raw_df([
+        ("2027-01-15", 90.0, "call", strike90_oi, 0.0, 0.3),
+        ("2027-01-15", 90.0, "put", strike90_oi, 0.0, 0.3),
+        ("2027-01-15", 100.0, "call", 1.0, -0.01, 0.3),
+        ("2027-01-15", 100.0, "put", 0.0, 0.0, 0.3),
+        ("2027-01-15", 110.0, "call", 1.0, 0.01, 0.3),
+        ("2027-01-15", 110.0, "put", 0.0, 0.0, 0.3),
+    ])
+    return _write_snapshot(tmp_path, df, name)
+
+
+def test_maxpain01_ambiguous_argmin_no_snapshot(tmp_path):
+    """F6-T5/C1 regression: an HONEST packet whose
+    canonical argmin hinges on an exported-0 strike that
+    may have been missing-NaN must NOT be FAILed — the
+    exported-only recompute yields 90 while production
+    (finite-OI candidates {100,110}) emitted 100 — the
+    verdict is 'unperformed' without a snapshot."""
+    rep, code, _ = _run(
+        _write(tmp_path, _mp01_packet(True)))
+    c = _check(rep, "MAXPAIN-01")
+    assert c["status"] == "unperformed", c["detail"]
+    assert "missing-NaN" in c["detail"]
+    assert not c["findings"]
+    assert code == 0
+    # the constrained check is ambiguous for the same
+    # reason — never a FAIL either
+    assert _check(
+        rep, "MAXPAIN-02")["status"] == "unperformed"
+    # the all-true-zero interpretation of the identical
+    # export is equally unprovable -> unperformed too
+    rep2, code2, _ = _run(
+        _write(tmp_path, _mp01_packet(False), "z.json"))
+    assert _check(
+        rep2, "MAXPAIN-01")["status"] == "unperformed"
+    assert code2 == 0
+
+
+def test_maxpain01_ambiguity_resolved_by_snapshot(tmp_path):
+    """With --snapshot the raw finite-OI rows decide the
+    candidate set: the honest NaN-world packet PASSes
+    under a NaN snapshot and FAILs a true mismatch under
+    a zero-OI snapshot (and vice versa)."""
+    pkt_nan = _mp01_packet(True)
+    pkt_zero = _mp01_packet(False)
+
+    snap_nan = _mp01_snapshot(
+        tmp_path, float("nan"), "nan.pkl")
+    rep, code, _ = _run(
+        _write(tmp_path, pkt_nan, "a.json"),
+        snapshot=snap_nan)
+    assert code == 0
+    assert _check(rep, "MAXPAIN-01")["status"] == "PASS"
+
+    rep2, code2, _ = _run(
+        _write(tmp_path, pkt_zero, "b.json"),
+        snapshot=snap_nan)
+    assert code2 == 1
+    assert _check(rep2, "MAXPAIN-01")["status"] == "FAIL"
+
+    snap_zero = _mp01_snapshot(tmp_path, 0.0, "z.pkl")
+    rep3, code3, _ = _run(
+        _write(tmp_path, pkt_zero, "c.json"),
+        snapshot=snap_zero)
+    assert code3 == 0
+    assert _check(rep3, "MAXPAIN-01")["status"] == "PASS"
+
+    rep4, code4, _ = _run(
+        _write(tmp_path, pkt_nan, "d.json"),
+        snapshot=snap_zero)
+    assert code4 == 1
+    assert _check(rep4, "MAXPAIN-01")["status"] == "FAIL"
+
+
+def test_maxpain01_unambiguous_exported0_still_checked(tmp_path):
+    """An exported-0 strike that CANNOT change the
+    canonical verdict leaves the expiry evaluated: the
+    zero-pain 140 candidate never ties the minimum, so
+    the honest packet still PASSes and a tampered
+    max_pain still FAILs — ambiguity handling only
+    fires when the verdict truly depends on it."""
+    strikes = [
+        _strike(100, co=1, po=0, cg=-0.01),
+        _strike(110, co=1, po=0, cg=0.01),
+        _strike(140, co=0, po=0, cg=0.0),
+    ]
+    m = {
+        "max_pain": 100.0,
+        "max_pain_constrained": 100.0,
+        "candidate_band": [70.0, 130.0],
+        "band_fell_back": False,
+        "band_boundary_hit": False,
+        "selected_lowest_candidate": True,
+        "selected_highest_candidate": False,
+        "gamma_flip": 110.0,
+    }
+    pkt = _mk_packet([_mk_expiry(
+        "2027-01-15", strikes, metrics=m)],
+        nearest_gamma_flip=110.0)
+    rep, _, _ = _run(_write(tmp_path, pkt))
+    # 140 sits outside the band and adds only a zero-pain
+    # term; argmin 100 identical under both hypotheses
+    assert _check(rep, "MAXPAIN-01")["status"] == "PASS"
+    assert _check(rep, "MAXPAIN-02")["status"] == "PASS"
+
+    pkt2 = _mk_packet([_mk_expiry(
+        "2027-01-15", strikes, metrics={
+            **m, "max_pain": 95.0})],
+        nearest_gamma_flip=110.0)
+    rep2, code2, _ = _run(
+        _write(tmp_path, pkt2, "t.json"))
+    assert code2 == 1
+    assert _check(rep2, "MAXPAIN-01")["status"] == "FAIL"
+
+
+# =========================
+# F6-T5/C2: regression tests killing the surviving
+# F6-T2 mutants (see devin_blackboard/
+# F6_MUTATION_REPORT.md — behavior-changing survivors)
+# =========================
+
+def test_agg_sub_milli_drift_fails(tmp_path):
+    """Mutation-killer (agg_tol_1e-3): AGG tolerance is
+    max(1e-9, 1e-9*mag) — a net_gex drift above it but
+    far below the 1e-3-relative mutant bound still
+    FAILs. total_net_gex is kept consistent so ONLY the
+    strike->expiry comparison drifts."""
+    pkt = _mk_packet([_three_strike_expiry()],
+                     nearest_gamma_flip=110.0)
+    e = pkt["market_snapshot"]["expiries"][0]
+    # strike sums are 0 (|gex| max 0.01); drift 5e-6:
+    # > real tol max(1e-9, 1e-9*0.01)=1e-9,
+    # < mutant tol max(1e-9, 1e-3*0.01)=1e-5
+    e["net_gex"] = e["net_gex"] + 5e-6
+    pkt["market_snapshot"]["total_net_gex"] = (
+        pkt["market_snapshot"]["total_net_gex"] + 5e-6)
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    assert code == 1
+    assert _check(rep, "AGG-01")["status"] == "FAIL"
+
+
+def test_zero_total_oi_snapshot_insufficient(tmp_path):
+    """Mutation-killer (raw_total_lt0): raw rows whose
+    finite OI sums to exactly 0 make EVERY candidate an
+    argmin -> 'insufficient_data', not 'eligible' —
+    boundary is total <= 0, not < 0."""
+    e = _mk_expiry(
+        "2027-01-15",
+        [_strike(100, co=0, po=0, cg=-0.01),
+         _strike(110, co=0, po=0, cg=0.01)],
+        unavailable_reason="insufficient_data",
+        metrics={"gamma_flip": 110.0})
+    pkt = _mk_packet([e], nearest_gamma_flip=110.0)
+    df = _raw_df([
+        ("2027-01-15", 100.0, "call", 0.0, -0.01, 0.3),
+        ("2027-01-15", 100.0, "put", 0.0, 0.0, 0.3),
+        ("2027-01-15", 110.0, "call", 0.0, 0.01, 0.3),
+        ("2027-01-15", 110.0, "put", 0.0, 0.0, 0.3),
+    ])
+    rep, code, _ = _run(
+        _write(tmp_path, pkt),
+        snapshot=_write_snapshot(tmp_path, df))
+    assert code == 0
+    assert _check(rep, "AVAIL-01b")["status"] == "PASS"
+
+
+def test_two_positive_strikes_prove_eligible(tmp_path):
+    """Mutation-killer (pos_gt_2): exactly 2 exported
+    positive-OI strikes prove eligibility — flagging the
+    expiry metrics_unavailable is a FAIL (boundary is
+    >= MIN_PAYOUT_STRIKES, not >)."""
+    e = _mk_expiry(
+        "2027-01-15",
+        [_strike(100, co=1, po=0, cg=-0.01),
+         _strike(110, co=0, po=1, pg=0.01)],
+        unavailable_reason="insufficient_data",
+        metrics={"gamma_flip": 110.0})
+    pkt = _mk_packet([e], nearest_gamma_flip=110.0)
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    assert code == 1
+    b = _check(rep, "AVAIL-01b")
+    assert b["status"] == "FAIL"
+
+
+def test_stale_iv_requires_null_iv(tmp_path):
+    """Mutation-killer (stale_iv_no_null_req): stale_iv
+    with a NON-null implied_volatility is a provenance
+    violation — the flag contracts iv:null +
+    raw_implied_volatility>2.0."""
+    pkt = _mk_packet([_three_strike_expiry()],
+                     nearest_gamma_flip=110.0)
+    s = pkt["market_snapshot"]["expiries"][0][
+        "strikes"][0]
+    s["stale_iv"] = True
+    s["raw_implied_volatility"] = 3.5
+    # implied_volatility deliberately left non-null
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    assert code == 1
+    assert _check(rep, "IV-01")["status"] == "FAIL"
+
+
+def test_existing_report_not_overwritten(tmp_path):
+    """Mutation-killer (report_w_mode): a requested
+    report path that already exists is preserved —
+    the report falls back to a '-N' suffixed name
+    ('x'-safe, never clobbers)."""
+    pkt = _mk_packet([_three_strike_expiry()],
+                     nearest_gamma_flip=110.0)
+    p = _write(tmp_path, pkt)
+    rp = tmp_path / "report.json"
+    rp.write_text('{"sentinel": true}', encoding="utf-8")
+    rep, code, written = _run(p, report=rp)
+    assert code == 0
+    assert rp.read_text(encoding="utf-8") == \
+        '{"sentinel": true}'
+    assert written is not None and written != rp
+    assert json.loads(
+        written.read_text(encoding="utf-8"))[
+            "overall_status"] in ("PASS", "WARN")
+
+
+def test_unavailable_reason_whitelist(tmp_path):
+    """Mutation-killer (accept_any_reason): a
+    metrics_unavailable expiry must carry a documented
+    data_quality reason — an arbitrary string FAILs."""
+    e = _mk_expiry(
+        "2027-01-15",
+        [_strike(100, co=0, po=0, cg=-0.01),
+         _strike(110, co=0, po=0, cg=0.01)],
+        unavailable_reason="insufficient_data",
+        metrics={"gamma_flip": 110.0})
+    e["data_quality"] = "vendor_hiccup"  # not in the set
+    pkt = _mk_packet([e], nearest_gamma_flip=110.0)
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    assert code == 1
+    assert _check(rep, "AVAIL-01a")["status"] == "FAIL"
+
+
+def test_fresh_boundary_exactly_max_age(tmp_path,
+                                      monkeypatch):
+    """Mutation-killer (fresh_ge): a packet exactly
+    max_age_hours old is still fresh — the WARN fires
+    only STRICTLY above the bound."""
+    fixed_now = datetime(
+        2027, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+    gen = (fixed_now - timedelta(hours=72)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+    class _FixedDT(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return fixed_now
+
+    monkeypatch.setattr(
+        WellnessCheck, "datetime", _FixedDT)
+    pkt = _mk_packet([_three_strike_expiry()],
+                     nearest_gamma_flip=110.0,
+                     generated_utc=gen)
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    f = _check(rep, "FRESH-01")
+    assert f["status"] == "PASS", f["detail"]
+    assert code == 0
+
+
+def test_flag_absent_expiry_unperformed(tmp_path):
+    """Mutation-killer (null_flag_means_avail): an expiry
+    missing metrics_unavailable is 'cannot evaluate' —
+    gated checks skip it; it is never treated as
+    available."""
+    e = _three_strike_expiry()
+    del e["metrics_unavailable"]
+    pkt = _mk_packet([e], nearest_gamma_flip=110.0)
+    rep, code, _ = _run(_write(tmp_path, pkt))
+    assert code == 1  # SCHEMA-01: required flag absent
+    c = _check(rep, "MAXPAIN-01")
+    assert c["status"] == "unperformed", c["detail"]
+
+
+# =========================
 # INPUT-01 / CHECKER-ERR / report handling
 # =========================
 

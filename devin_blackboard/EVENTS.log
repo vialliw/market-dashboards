@@ -463,3 +463,25 @@ Evidence map:
   }
 ]
 [2026-10-16T17:47:06.231745+00:00] [EXECUTOR] claimed F6-T5
+[2026-10-16T18:07:44.020451+00:00] [EXECUTOR] completed F6-T5 -> C1: check_max_pain now takes raw_index and applies the same exported-0/NaN candidate-ambiguity doctrine as MAXPAIN-02 — canonical argmin computed on the full exported set AND the unambiguous-only set; if they differ the expiry is 'unperformed' (never false-FAIL); with --snapshot candidates recomputed from _raw_payout_rows(raw finite-OI rows). Argmin-only comparison is provably subset-stable (zero-OI strikes add zero-pain terms). New tests: 90/100/110 ChatGPT reproduction (unperformed both worlds w/o snapshot; 4-case PASS/FAIL matrix w/ snapshot) + non-blocking unambiguous-exported0 case. C2: devin_blackboard/F6_MUTATION_REPORT.md enumerates all 10 F6-T2 survivors w/ classification, probe input, expected-vs-actual, HEAD status — verified by devin_blackboard/probe_f6_t5_mutants.py (re-ran all 15 mutants vs current suite). 8 new mutant-killer regressions; score at HEAD 14/15 caught, sole escape = drop_maxabs_early_ret (provably equivalent mutation). pytest 89/89; zero network. ACs 2/2 PASS.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "........................................................................ [ 80%]\n.................                                                        [100%]\n89 passed in 13.32s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "report",
+    "command": "type devin_blackboard\\F6_MUTATION_REPORT.md",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "**: CAUGHT.\n\n---\n\n## Non-survivors (context)\n\nThe 5 mutants already caught at F6-T2 remain caught at HEAD:\n`flip_floor_1e-6` (test_flip_floor_boundary),\n`flip_wrong_direction` (22 tests), `checker_err_exit_1`\n(test_checker_err_exit_2), `band_0.6` (16 tests),\n`no_dup_strike_check` (collection error under mutant).\n\n## Score\n\n| revision | caught | escaped |\n|---|---|---|\n| F6-T2 review | 5/15 | 10 |\n| HEAD (F6-T5) | 14/15 | 1 (`drop_maxabs_early_ret`,\nequivalent-mutation \u2014 uncatchable by design) |\n"
+  }
+]
