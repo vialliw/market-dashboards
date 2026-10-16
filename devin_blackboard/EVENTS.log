@@ -271,3 +271,18 @@ Evidence map:
 ][2026-10-16] B | DONE F4-T1 | unusable-expiry tolerance: _per_expiry_metrics bundle (ValueError-only catch); all-NaN-OI/absent expiry -> null metrics + metrics_unavailable:true + data_quality reason; whole-book + healthy expiries unaffected; plot omits markers w/ note; raw fns still raise; 26 offline tests (was 24); AC 2/2 PASS | files: GexDashboard.py, tests/test_gex_metrics.py
 
 [2026-10-16T13:58:27.510264+00:00] [CHALLENGER] claimed F4-T2
+[2026-10-16] C | DONE F4-T2 | APPROVED. probe_f4_t2.py 37 PASS checks: packet honesty (all-NaN-OI -> 8 explicit nulls + metrics_unavailable:true + data_quality:no_finite_oi; absent expiry same; strikes still exported OI->0; healthy untouched; whole-book unaffected; insufficient_data branch verified), no-crossing vs could-not-compute distinguishable, scoped tolerance (IndexError/KeyError/TypeError/RuntimeError/ZeroDivisionError/AssertionError + natural KeyError/TypeError all propagate - only ValueError absorbed), A/B vs pre-F4 byte-identical on all 7 TSM expiries + whole-book, raw fns still raise ValueError, dashboard offline path (dead subplot annotation + no vlines, NaN/None atm_iv skipped, no crash on absent expiry), mutations vs real pytest (5/6 caught; except-Exception broadening escapes - non-blocking test-rigor gap), pytest 26/26, zero network, diff clean (GexDashboard.py + tests + blackboard only) | files: devin_blackboard/probe_f4_t2.py, devin_blackboard/STATE.md, devin_blackboard/EVENTS.log
+
+[2026-10-16T14:06:20.140404+00:00] [CHALLENGER] completed F4-T2 -> APPROVED. probe_f4_t2.py: 37 checks PASS — honest nulls+flag+reason (no artifacts), no-crossing vs could-not-compute distinct, ONLY ValueError absorbed (6 injected + 2 natural non-ValueError modes propagate), pre-F4 A/B byte-identical on 7 TSM expiries + whole-book, raw fns still raise, dashboard offline path verified (annotation, no vlines, atm_iv None/NaN skipped), mutations vs real tests 5/6 caught — except-Exception broadening escapes (non-blocking test-rigor gap, noted in STATE.md), pytest 26/26, zero network, diff scope clean
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "review",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]

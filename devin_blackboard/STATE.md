@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F4-T1 done by Agent B — awaiting challenger)
+Last Updated: 2026-10-16 (F4-T2 APPROVED by Agent C — awaiting critic gate)
 Current Branch: main
 
 ## Repo
@@ -215,13 +215,52 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
   metrics elsewhere, raw-ValueError asserts;
   metrics_unavailable-vs-no-crossing distinction test.
   pytest: 26 passed. AC 2/2 PASS. Commit 5bc7a42.
+- F4-T2 (C, done): adversarial review APPROVED. Probe
+  devin_blackboard/probe_f4_t2.py — 37 PASS checks:
+  (A) packet honesty: all-NaN-OI expiry emits 8 explicit
+      null metric fields + metrics_unavailable:true +
+      data_quality:"no_finite_oi"; absent expiry same
+      (strikes []); strikes still exported (OI->0
+      conflation); healthy expiry untouched (no
+      data_quality key); whole-book fields unaffected;
+      "insufficient_data" reason branch verified via
+      injected ValueError on a finite-OI slice.
+  (B) finite-OI/all-NaN-gex expiry -> metrics available
+      + gamma_flip:null — 'no crossing' and 'could not
+      compute' are distinguishable states.
+  (C) scoped tolerance: IndexError/KeyError/TypeError/
+      RuntimeError/ZeroDivisionError/AssertionError
+      injected into the bundle ALL propagate (kill
+      ticker) — only ValueError is absorbed; natural
+      KeyError (missing gex col) + TypeError (object
+      dtype) also propagate.
+  (D) A/B vs pre-F4 module (git show 9deb260): all 7
+      TSM expiries byte-identical per-expiry dicts
+      (new keys stripped) + identical whole-book
+      snapshot; no false flags on clean book.
+  (E) raw compute_max_pain/_constrained still raise
+      ValueError on all-NaN-OI + real empty slices.
+  (F) dashboard path offline (monkeypatched
+      fetch_options + captured fig): dead subplot has
+      'unavailable (no finite OI)' annotation + zero
+      cyan/teal vlines; NaN/None atm_iv -> annotation
+      skipped; absent-expiry subplot no crash.
+  (G) mutations vs REAL tests (mutant module injected
+      via sys.modules, actual pytest run): 5/6 caught —
+      artifact-instead-of-null, flag removed, wrong
+      data_quality, 0-instead-of-null, finite-filter
+      revert; 'except Exception' broadening ESCAPES
+      (see notes). pytest 26/26; zero network; diff
+      audit 9deb260..HEAD: only GexDashboard.py +
+      tests/test_gex_metrics.py + devin_blackboard/*.
+  Non-blocking notes below.
 
 ## Ready
 
-- F4-T2 (challenger C): adversarial review of the F4-T1
-  tolerance changes — null honesty, healthy-expiry
-  non-regression, loud ValueError preserved, no
-  over-broad exception swallowing, diff scope.
+- F4-T3 (critic D): independent gate — re-run pytest;
+  verify all-NaN-OI expiry -> null metrics+flag while
+  others compute; raw compute_max_pain still raises;
+  diff scope clean.
 
 ## Notes for reviewers
 
@@ -263,6 +302,34 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
   (d) NaN impliedVolatility passes through unflagged as NaN
   (NaN>2.0 is False) — pre-existing, unchanged; (e) flip at
   strike 0.0 would emit null via truthiness check — pre-existing.
+- F4-T2 non-blocking notes: (a) TEST-RIGOR GAP — mutating
+  `except ValueError` to `except Exception` in
+  _per_expiry_metrics produces an observable behavior change
+  (probe: injected KeyError is swallowed -> a HEALTHY expiry
+  degrades to metrics_unavailable) yet the suite still passes
+  2/2 — no test injects a non-ValueError failure, so the
+  "only ValueError is tolerated" invariant is verified by
+  probe section C (6 injected exception types + 2 natural
+  failure modes all propagate) but is NOT regression-guarded
+  by any committed test; a 3-line
+  pytest.raises((KeyError, TypeError)) test would close it;
+  (b) an unusable expiry still exports net_gex:0.0 /
+  gamma_regime:"-Gamma" (sum of all-NaN collapses to 0) and
+  call/put walls with oi:0 — aggregate fields sit OUTSIDE the
+  nulled metric set; metrics_unavailable:true is the
+  consumer signal; (c) an expiry with all-NaN IV exports
+  atm_iv as a bare `NaN` JSON token (json.dump allow_nan
+  default; strict parsers would reject) — the plot got an
+  np.isfinite guard but the packet only checks `is not None`;
+  pre-existing wart, F4 touched that exact line; (d)
+  _per_expiry_metrics is all-or-nothing: a ValueError from
+  either payout fn nulls a potentially computable
+  gamma_flip — unreachable on the real path since NaN OI
+  implies NaN gex via compute_gex; (e) a columns-only
+  object-dtype df raises TypeError (not ValueError) inside
+  _finite_oi_rows — loud, propagates, consistent with F3
+  note (c); real slices keep float64 so empty -> ValueError
+  -> tolerated as designed.
 - F3-T2 non-blocking notes: (a) selected_*_candidate flags are
   LITERAL "argmin is the lowest/highest eligible strike" — they
   fire even when the band is not binding (probe: unconstrained
