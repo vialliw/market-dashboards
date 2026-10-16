@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F2-T1 done by Agent B — 3/3 AC PASS; F2-T2 ready)
+Last Updated: 2026-10-16 (F2-T2 done by Agent C — APPROVED; F2-T3 ready)
 Current Branch: main
 
 ## Repo
@@ -53,11 +53,23 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   lib on all 7 TSM expiries (unconstrained 435/450/445/460/470/420/450
   = constrained, all in-band, no fell_back/boundary_hit); alternating
   noise -> None. ACs: 3/3 PASS. Commit 11c1d52.
+- F2-T2 (C, done): adversarial review APPROVED. Probe
+  devin_blackboard/probe_f2_t2.py: 33 hostile-input checks all PASS
+  (uniform 1e-12/1e-6/9.999e-4 noise -> None, alternating +/-1e-12 ->
+  None, mixed noise+real books correct, nonfinite dropped, spot=None
+  first-ascending, canonical ignores spot, empty-band fell_back vs
+  edge boundary_hit distinct end-to-end in packet, iv=2.0 not stale /
+  2.0000001 stale + raw IV provenance + GEX retained, meta docs
+  accurate). 10/10 meaningful mutants caught (relative-only floor,
+  strict >, no nonfinite drop, packet field swap, boundary/fell_back
+  suppression, re-banded canonical, first-crossing revert, provenance
+  drop, metric-key rename). pytest 20/20; zero network; diff scope
+  clean (GexDashboard.py + tests/test_gex_metrics.py + blackboard).
+  Non-blocking notes below.
 
 ## Ready
 
-- F2-T2 (C): adversarial review of F2 amendments.
-- F2-T3 (D): critic gate for F2 (depends on F2-T2).
+- F2-T3 (D): critic gate for F2 (depends on F2-T2 — now unblocked).
 
 ## Notes for reviewers
 
@@ -70,3 +82,17 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   asserted by tests.
 - Empty-df input to either max_pain fn still raises ValueError
   (pre-existing, unchanged).
+- F2-T2 non-blocking notes: (a) the `max_abs < MIN_MATERIAL_GEX`
+  early return at GexDashboard.py:283 is functionally redundant —
+  the combined floor already makes every sub-floor strike
+  immaterial (removal alone is uncatchable; harmless fast-path);
+  (b) spot=NaN into compute_gamma_flip silently degenerates to the
+  first ascending crossing (argmin over NaN distances) and into
+  compute_max_pain_constrained degrades to fell_back — spec only
+  mandates spot=None; (c) band_boundary_hit is literal
+  "argmin landed on an edge" — fires even when the unconstrained
+  argmin is the same edge strike, i.e. it does NOT prove the band
+  was binding (docstring/meta describe it exactly this way);
+  (d) NaN impliedVolatility passes through unflagged as NaN
+  (NaN>2.0 is False) — pre-existing, unchanged; (e) flip at
+  strike 0.0 would emit null via truthiness check — pre-existing.

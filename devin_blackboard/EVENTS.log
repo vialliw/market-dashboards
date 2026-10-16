@@ -143,3 +143,19 @@ Evidence map:
 [2026-10-16] B | DONE F2-T1 | F2 amendments: MIN_MATERIAL_GEX=1e-3 absolute floor + relative 1%-of-max (noise slice -> None, nonfinite dropped); canonical unconstrained max_pain + separately labeled compute_max_pain_constrained with band/fell_back/boundary_hit metadata; raw_implied_volatility provenance + meta.metric_definitions; 20 offline tests (was 11), probe verifies all 7 expiries independently, 3/3 AC PASS | files: GexDashboard.py, tests/test_gex_metrics.py, devin_blackboard/probe_f2_t1.py
 
 [2026-10-16T10:44:02.096430+00:00] [CHALLENGER] claimed F2-T2
+[2026-10-16] C | F2-T2 IN PROGRESS -> adversarial probes run
+[2026-10-16] C | DONE F2-T2 | APPROVED. probe_f2_t2.py: 33 hostile checks all PASS — floor blocks uniform 1e-12/1e-6/9.999e-4 + alternating +/-1e-12 noise slices -> None; mixed real+noise books correct; nonfinite dropped; spot=None first-ascending; canonical max_pain ignores spot; constrained fell_back vs boundary_hit distinct end-to-end; stale IV strict >2.0 with raw_implied_volatility + retained GEX; meta.metric_definitions/data_quality accurate. 10/10 mutants caught (non-vacuous). pytest 20/20; zero network; diff clean (GexDashboard.py + test_gex_metrics.py + blackboard). Non-blocking: early-return at GexDashboard.py:283 redundant with combined floor; spot=NaN/NaN-IV edge warts pre-existing or unspecified.
+
+[2026-10-16T10:52:42.227829+00:00] [CHALLENGER] completed F2-T2 -> APPROVED. probe_f2_t2.py (devin_blackboard): 33 adversarial checks all PASS — materiality floor blocks uniform 1e-12/1e-6/9.999e-4 and alternating +/-1e-12 noise -> None, mixed noise+real books resolve to real crossings only, nonfinite dropped, spot=None first-ascending preserved; compute_max_pain canonical ignores spot; compute_max_pain_constrained dict distinguishes empty-band fell_back from edge boundary_hit end-to-end through packet; stale IV strict >2.0 with raw_implied_volatility provenance + GEX retained-with-flag; meta.metric_definitions/data_quality honest. Mutation harness: 10/10 mutants caught (relative-only floor revert, strict-inequality, nonfinite-drop removal, packet field swap, boundary/fell_back suppression, re-banded canonical, first-crossing revert, provenance drop, metric-key rename). pytest 20/20 offline; zero network; diff scope clean (GexDashboard.py + tests/test_gex_metrics.py + blackboard only). Non-blocking notes in STATE.md: max_abs<MIN early return redundant; spot=NaN degenerates silently; boundary_hit is literal edge-landing not proof band bound; NaN IV passes through (pre-existing).
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "review",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]
