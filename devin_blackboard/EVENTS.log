@@ -421,3 +421,25 @@ Evidence map:
   }
 ]
 [2026-10-16T17:14:32.666653+00:00] [EXECUTOR] claimed F6-T4
+[2026-10-16T17:36:50.490204+00:00] [EXECUTOR] completed F6-T4 -> All 3 F6-T2 findings remediated in WellnessCheck.py. F3: check_max_pain_constrained(packet, raw_index) — without snapshot, verdict computed on full exported set AND on unambiguous-only set (strikes with >=1 positive-OI side); if the verdict differs on any compared field the expiry is ambiguity-dependent -> check status 'unperformed' with named expiries + 'reconcile via --snapshot' note (honest NaN-in-band fell_back packet and pain-tie variant no longer false-FAIL; subset-stability proof: argmin/flags identical under every ambiguous-subset removal iff endpoint verdicts agree). With --snapshot, candidates recomputed from raw finite-OI rows (_raw_payout_rows) -> true mismatch FAILs. F1: build_report guards _sha256(snapshot_path) — unreadable file -> snapshot_hash:null + snapshot_hash_error, SNAP-01 FAIL + exit 1 (was CHECKER-ERR exit 2). F2: check_snapshot now FAILs on raw-only expiries (N raw rows in snapshot only). Tests 74->78: honest-packet unperformed regression (both ambiguity directions), snapshot resolution PASS/FAIL both worlds, unreadable+non-DF snapshot exit-1, raw-only expiry SNAP-01 FAIL. pytest 78/78; probe_f6_t2.py 97/97 (S6b/S7 updated to assert fixed behavior; S11 whitelists docs/ per adjudicated note N1). Zero network.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "........................................................................ [ 92%]\n......                                                                   [100%]\n78 passed in 12.30s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "reprobe",
+    "command": "python devin_blackboard/probe_f6_t2.py",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "es=['WellnessCheck.py', 'devin_blackboard/EVENTS.log', 'devin_blackboard/STATE.md', 'devin_blackboard/TASKS.json', 'devin_blackboard/regen_f6_fixture.py', 'docs/enhancements/wellness_check.md', 'tests/fixtures/TSM_ai_packet.json', 'tests/fixtures/TSM_raw_ai_packet.json', 'tests/fixtures/TSM_raw_snapshot.pkl', 'tests/fixtures/TSM_snapshot.pkl', 'tests/test_wellness.py']\nPASS S11 provenance: packet sha256 of file bytes + snapshot hash + commit + counts | commit=025b5304\n\n=== 97 checks, 0 FAIL ===\n"
+  }
+]

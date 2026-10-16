@@ -599,7 +599,7 @@
     "id": "F6-T4",
     "title": "Remediate F6-T2 findings F1/F2/F3 in WellnessCheck.py",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F6-T2"
     ],
