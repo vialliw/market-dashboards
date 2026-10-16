@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F6-T3 done by Agent D — critic gate PASS, cycle F6 CLOSED)
+Last Updated: 2026-10-16 (F6-T5 done by Agent B — ChatGPT impl-review concerns C1+C2 remediated)
 Current Branch: main
 
 ## Repo
@@ -751,6 +751,62 @@ CONSTRAINT: NO live yfinance calls; tests stay offline
       patterns, pre-F6-claim, benign). git status clean
       except untracked devin_blackboard probe artifacts.
       Cycle F6 CLOSED.
+
+- F6-T5 (B, done): ChatGPT impl-review concerns
+  remediated —
+  C1 (MAXPAIN-01 ambiguity): check_max_pain now takes
+      raw_index and applies the same exported-0/NaN
+      candidate-ambiguity doctrine as MAXPAIN-02 —
+      canonical argmin computed on the full exported
+      strike set AND the unambiguous-only set (>=1
+      positive-OI side); differing argmins ->
+      'unperformed' (never a false FAIL — the 90/100/110
+      NaN/1/1 reproduction now reads unperformed);
+      with --snapshot candidates recomputed from
+      _raw_payout_rows (raw finite-OI rows). The
+      comparison is argmin-only and provably
+      subset-stable: zero-OI ambiguous strikes add
+      zero-pain terms, so an argmin below the
+      unambiguous minimizer under ANY intermediate
+      removal would already win under the all-included
+      hypothesis (tie-count divergence alone is
+      annotation-only — the flat-min _band_nan case
+      still PASSes).
+  C2 (mutation documentation):
+      devin_blackboard/F6_MUTATION_REPORT.md enumerates
+      all 10 F6-T2 surviving mutants — name, mutation,
+      classification (equivalent-mutation /
+      verified-correct-narrow-edge / behavior-changing
+      defect), probe input, expected-vs-actual, status
+      at HEAD. NOTE: the task-brief path
+      devin_blackboard/f6_t2_mutants.py does not exist —
+      the authoritative mutant table is embedded in
+      probe_f6_t2.py section S10. Re-verified at HEAD
+      by new devin_blackboard/probe_f6_t5_mutants.py
+      (each mutant rebuilt from current source + real
+      suite run): 14/15 CAUGHT — the 5 original kills
+      plus all 9 catchable survivors (tie_last_min was
+      already caught by F6-T4 tests; the other 8 now
+      killed by new regressions); sole escape
+      drop_maxabs_early_ret is a provably equivalent
+      mutation (max_abs<floor -> material set empty ->
+      None identically — same redundancy as production).
+  Tests 78 -> 89 (+11): MAXPAIN-01 ambiguity
+      unperformed-both-worlds + 4-case snapshot
+      PASS/FAIL matrix + unambiguous-exported0 control;
+      mutant-killers agg_sub_milli_drift (drift pinned
+      strictly inside (1e-9,1e-3)*mag — an earlier 1e-5
+      probe hit the mutant tolerance boundary exactly),
+      zero_total_oi_snapshot_insufficient,
+      two_positive_strikes_prove_eligible (pos==2
+      boundary), stale_iv_requires_null_iv,
+      existing_report_not_overwritten (sentinel
+      preserved + -N suffix fallback),
+      unavailable_reason_whitelist,
+      fresh_boundary_exactly_max_age (frozen clock),
+      flag_absent_expiry_unperformed.
+  pytest 89/89; zero network. ACs: 2/2 PASS.
+  Commit 48d4c27.
 
 ## Ready
 
