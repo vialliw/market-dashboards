@@ -317,5 +317,94 @@
       }
     ],
     "result": null
+  },
+  {
+    "id": "F4-T1",
+    "title": "Tolerate empty/all-NaN-OI expiries instead of aborting ticker",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F3-T3"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "AGENTS.md"
+    ],
+    "output_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py"
+    ],
+    "scope": "Live SPY run (market open, 2026-10-16) failed: expiry 2026-10-29 has 2 rows with ALL-NaN openInterest. compute_max_pain correctly raises ValueError on all-NaN slices, but the exception propagates and kills the whole ticker's dashboard+packet (main loop catches and skips the entire ticker). This is a robustness regression from the loud-failure design.\n\nREQUIRED: per-expiry metric computation in build_ai_packet AND the dashboard plotting loop must tolerate unusable expiries. Where a per-expiry sub-df has no finite OI rows (or compute_max_pain/compute_max_pain_constrained/compute_gamma_flip would fail on insufficient data), emit explicit nulls for that expiry's metrics (max_pain, max_pain_constrained+flags, gamma_flip) and mark it in the packet (e.g. 'data_quality':'no_finite_oi' or a 'metrics_unavailable' flag) rather than raising. Whole-book metrics on the combined df still compute normally. Dashboard plots for such expiries may omit the max-pain/flip markers with a note. Add tests: an expiry df with all-NaN OI inside build_ai_packet yields null metrics + flag for that expiry while other expiries and whole-book fields compute normally; do NOT silently return artifact strikes.\n\nKeep ValueError behavior of the raw compute_max_pain functions themselves (loud failure is intended for direct misuse); the tolerance lives at the packet/plot call sites. Offline only, no yfinance in tests, minimal diffs.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all pass incl. all-NaN-expiry tolerance test"
+      },
+      {
+        "id": "AC-2",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F4-T2",
+    "title": "Adversarial review of F4",
+    "role": "challenger",
+    "status": "todo",
+    "depends_on": [
+      "F4-T1"
+    ],
+    "assigned_to": "C",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Adversarially review F4-T1: null-metric emission must be honest (no artifact values, consumers can detect unavailability); healthy expiries unaffected; ValueError still raised on direct misuse of compute_max_pain; no silent swallowing of OTHER exceptions; scope/diff clean; offline only. APPROVED or CONCERNS with evidence.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "review",
+        "expected": "APPROVED or blocking findings"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F4-T3",
+    "title": "Critic gate F4",
+    "role": "critic",
+    "status": "todo",
+    "depends_on": [
+      "F4-T2"
+    ],
+    "assigned_to": "D",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Independent gate: re-run pytest; verify on a synthetic packet that an all-NaN-OI expiry yields null metrics+flag while others compute; verify raw compute_max_pain still raises on all-NaN; diff scope clean. PASS/FAIL + numbers.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "independent_verification",
+        "expected": "PASS with numbers"
+      }
+    ],
+    "result": null
   }
 ]
