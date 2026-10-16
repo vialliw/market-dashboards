@@ -322,7 +322,7 @@
     "id": "F4-T1",
     "title": "Tolerate empty/all-NaN-OI expiries instead of aborting ticker",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F3-T3"
     ],

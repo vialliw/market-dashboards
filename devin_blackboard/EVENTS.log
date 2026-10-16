@@ -247,3 +247,25 @@ Evidence map:
   }
 ]
 [2026-10-16T13:52:18.221316+00:00] [EXECUTOR] claimed F4-T1
+[2026-10-16T13:57:18.942687+00:00] [EXECUTOR] completed F4-T1 -> per-expiry tolerance implemented: new _per_expiry_metrics(sub,spot) bundle returns None on ValueError (only ValueError tolerated; other exceptions propagate). build_ai_packet: unusable expiry emits explicit nulls for max_pain/max_pain_constrained/candidate_band/fell_back/boundary_hit/selected_lowest/selected_highest/gamma_flip + metrics_unavailable:true + data_quality reason (no_finite_oi or insufficient_data); empty-slice atm_iv -> null; meta.data_quality + meta.metric_definitions document the flag; whole-book metrics unaffected. plot_gex_dashboard: same bundle; max-pain vlines+legend skipped with a note annotation; ATM IV annotation skipped when None/nonfinite. Raw compute_max_pain/compute_max_pain_constrained still raise ValueError on all-NaN slices (loud failure preserved). Smoke: mixed book {healthy exp, all-NaN-OI exp, absent exp} -> healthy computes (mp=100, flip ok), dead gets nulls+flag+no_finite_oi, absent gets nulls+flag, book fields compute. pytest 26/26 (was 24; +2: all-NaN-expiry tolerance incl. raw-ValueError assertions + metrics_unavailable-vs-no-flip distinction). Commit 5bc7a42. AC 2/2 PASS.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "..........................                                               [100%]\n26 passed in 4.57s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  }
+]
