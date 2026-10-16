@@ -287,3 +287,30 @@ Evidence map:
   }
 ]
 [2026-10-16T14:06:55.085986+00:00] [CRITIC] claimed F4-T3
+[2026-10-16] D | DONE F4-T3 | critic gate PASS. probe_f4_t3.py 22/22 checks. pytest 26/26 (5.29s); zero network in tests (only fixture meta.source string). Synthetic mixed book (spot=100): healthy 2026-11-20 -> metrics_unavailable:false, max_pain=100.0 == independent plain-Python payout argmin (7000.0), constrained=100.0, band [70,130], gamma_flip=110.0, atm_iv=0.25, no data_quality key; dead 2026-10-29 (all-NaN OI) -> metrics_unavailable:true + data_quality:"no_finite_oi" + all 8 metric fields explicit null (actual emitted JSON shown in probe output) + atm_iv 0.30; absent 2027-01-15 -> same flag, strikes [], atm_iv null; whole-book unaffected (spot 100, total_net_gex 0.0, flip 110.0). Raw compute_max_pain/_constrained still raise ValueError ("attempt to get argmin of an empty sequence") on all-NaN slice. Non-ValueError not swallowed: missing 'openInterest' -> KeyError out of build_ai_packet; missing 'strike' -> KeyError out of _per_expiry_metrics; injected RuntimeError propagates; injected ValueError -> None. Dead strikes still exported (95/105/115, OI->0); max_pain null, never lowest-strike artifact. Diff audit: 5bc7a42..d97a193 only devin_blackboard/*; full F4 range 9deb260..d97a193 only GexDashboard.py + tests/test_gex_metrics.py + devin_blackboard/*; no network/import additions; tree clean. Cycle F4 CLOSED.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "independent_verification",
+    "command": "python devin_blackboard/probe_f4_t3.py",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "22/22 checks passed; ALL PASS"
+  }
+]
+
+[2026-10-16T14:09:34.347893+00:00] [CRITIC] completed F4-T3 -> PASS. probe_f4_t3.py 22/22; pytest 26/26 (5.29s); zero network. Dead all-NaN-OI expiry -> 8 explicit null metric fields + metrics_unavailable:true + data_quality:no_finite_oi, strikes still exported (OI->0), max_pain null never lowest-strike artifact; healthy expiry real metrics (mp=100.0 == independent argmin, flip=110.0); absent expiry same flag + strikes []. Raw fns still raise ValueError; KeyError/RuntimeError propagate (only ValueError absorbed). Diff 9deb260..d97a193: only GexDashboard.py + test_gex_metrics.py + devin_blackboard/*; tree clean. Cycle F4 CLOSED.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "independent_verification",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]

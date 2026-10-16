@@ -384,7 +384,7 @@
     "id": "F4-T3",
     "title": "Critic gate F4",
     "role": "critic",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F4-T2"
     ],

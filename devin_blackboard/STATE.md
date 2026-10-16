@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F4-T2 APPROVED by Agent C — awaiting critic gate)
+Last Updated: 2026-10-16 (F4-T3 critic gate PASS by Agent D — Cycle F4 CLOSED)
 Current Branch: main
 
 ## Repo
@@ -255,12 +255,56 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
       tests/test_gex_metrics.py + devin_blackboard/*.
   Non-blocking notes below.
 
+- F4-T3 (D, done): critic gate PASS. Probe
+  devin_blackboard/probe_f4_t3.py — 22/22 checks.
+  pytest 26/26 (5.29s); zero network in tests (only
+  fixture meta.source string "yfinance").
+  (A) Synthetic mixed book (spot=100; healthy
+      2026-11-20 strikes 90/100/110; dead 2026-10-29
+      strikes 95/105/115 ALL-NaN OI; absent
+      2027-01-15): healthy expiry ->
+      metrics_unavailable:false, max_pain=100.0 ==
+      independent plain-Python finite-only payout
+      argmin (payout 7000.0), constrained=100.0,
+      band [70,130], gamma_flip=110.0, atm_iv=0.25,
+      no data_quality key. Dead expiry ->
+      metrics_unavailable:true, data_quality:
+      "no_finite_oi", all 8 metric fields explicit
+      null (max_pain/constrained/candidate_band/
+      fell_back/boundary_hit/selected_lowest/
+      selected_highest/gamma_flip), atm_iv:0.30.
+      Absent expiry -> same flag, strikes [],
+      atm_iv null. Whole-book unaffected
+      (spot 100, total_net_gex 0.0, flip 110.0).
+  (B) Raw compute_max_pain +
+      compute_max_pain_constrained still raise
+      ValueError ("attempt to get argmin of an
+      empty sequence") on the all-NaN-OI slice.
+  (C) Non-ValueError NOT swallowed: missing
+      'openInterest' -> KeyError out of
+      build_ai_packet; missing 'strike' ->
+      KeyError out of _per_expiry_metrics;
+      injected RuntimeError propagates; injected
+      ValueError -> None (boundary absorbs only
+      data failures, as designed).
+  (D) Dead expiry strikes still exported (3
+      strike objects 95/105/115, OI->0
+      conflation per data_quality note);
+      max_pain is null — never the lowest-strike
+      (95) artifact.
+  (E) Diff audit: declared F4 range
+      5bc7a42..d97a193 touched only
+      devin_blackboard/*; full F4 cycle range
+      9deb260..d97a193 touched only
+      GexDashboard.py + tests/test_gex_metrics.py
+      + devin_blackboard/* — all declared files.
+      No import/network additions in the code
+      diff. Tree clean (probe file is an allowed
+      output). Cycle F4 CLOSED.
+
 ## Ready
 
-- F4-T3 (critic D): independent gate — re-run pytest;
-  verify all-NaN-OI expiry -> null metrics+flag while
-  others compute; raw compute_max_pain still raises;
-  diff scope clean.
+- (none — Cycle F4 closed; awaiting orchestrator)
 
 ## Notes for reviewers
 
