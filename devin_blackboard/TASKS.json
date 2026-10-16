@@ -406,5 +406,94 @@
       }
     ],
     "result": null
+  },
+  {
+    "id": "F5-T1",
+    "title": "Degenerate-chain insufficient_data flag + scoped ValueError absorption",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F4-T3"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "AGENTS.md"
+    ],
+    "output_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py"
+    ],
+    "scope": "External review of the live-run results raised 2 blocking items (review file: gex_live_run_verification_v1_advices.md).\n\n1. DEGENERATE-CHAIN ELIGIBILITY (live case INTC 2026-10-19): a 1-strike expiry (call_oi=2, put_oi=0) computes argmin=190 'correctly' but the payout is 0 at EVERY settlement <=190 — not a unique economic max pain. Add metric-eligibility rules at the _per_expiry_metrics/packet level: an expiry whose usable chain is degenerate (define explicitly: e.g. <2 finite-OI strikes total, or total finite OI == 0 — pick a defensible rule and document it) must emit metrics_unavailable:true + data_quality:'insufficient_data' (reuse the existing flag mechanism) INSTEAD of correct-but-meaningless metrics. gamma_flip may independently be computable — only null metrics that fail eligibility (per-metric, not all-or-nothing where feasible; document the choice).\n\n2. SCOPED FAILURE ABSORPTION: the current except-ValueError->None in _per_expiry_metrics absorbs ALL ValueErrors including unrelated bugs. Narrow it: only absorb the specific expected missing-data failure mode (e.g. detect the empty-candidate/empty-pains case, or pre-check eligibility so compute functions are never called on unusable slices — preferred: eligibility pre-check makes the except unnecessary or belt-and-suspenders). If an except remains, it must not mask unrelated ValueErrors (e.g. match message 'attempt to get argmin of an empty sequence', or check slice eligibility before calling). Ensure metrics_unavailable affects ONLY metrics that depend on the invalid input.\n\n3. Tests: degenerate single-strike expiry -> metrics_unavailable+insufficient_data; a synthetic unrelated ValueError injected in the metric path still propagates; eligibility rule boundary test; multi-metric partial-availability case if supported; all offline.\n\nRULES: offline only, no yfinance, no full-script runs, minimal diffs, keep existing flag semantics backward-compatible.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all pass incl. degenerate-chain + unrelated-ValueError-propagation tests"
+      },
+      {
+        "id": "AC-2",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F5-T2",
+    "title": "Adversarial review of F5",
+    "role": "challenger",
+    "status": "todo",
+    "depends_on": [
+      "F5-T1"
+    ],
+    "assigned_to": "C",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Adversarially review F5-T1: degenerate-eligibility rule is defensible and can't flag healthy expiries (probe thin-but-real chains); unrelated ValueErrors propagate (inject several); partial metric availability works if claimed; no artifact emission paths; mutation-check the new tests; scope/diff clean; offline only. APPROVED or CONCERNS with evidence.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "review",
+        "expected": "APPROVED or blocking findings"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F5-T3",
+    "title": "Critic gate F5",
+    "role": "critic",
+    "status": "todo",
+    "depends_on": [
+      "F5-T2"
+    ],
+    "assigned_to": "D",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Independent gate: re-run pytest; independently verify a 1-strike degenerate expiry -> metrics_unavailable+insufficient_data while healthy expiry computes; verify injected non-missing-data ValueError propagates; diff scope clean. PASS/FAIL + numbers.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "independent_verification",
+        "expected": "PASS with numbers"
+      }
+    ],
+    "result": null
   }
 ]
