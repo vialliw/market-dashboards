@@ -3,7 +3,7 @@
     "id": "F1-T1",
     "title": "Fix gamma_flip/max_pain artifacts + stale-IV hygiene in GexDashboard.py (issue #1)",
     "role": "executor",
-    "status": "todo",
+    "status": "in_progress",
     "depends_on": [],
     "assigned_to": "B",
     "input_files": [
@@ -56,7 +56,9 @@
     "title": "Challenger: adversarial review of F1-T1 gamma_flip/max_pain fix",
     "role": "challenger",
     "status": "todo",
-    "depends_on": ["F1-T1"],
+    "depends_on": [
+      "F1-T1"
+    ],
     "assigned_to": "C",
     "input_files": [
       "GexDashboard.py",
@@ -86,7 +88,10 @@
     "title": "Critic: final verification gate for issue #1 fix",
     "role": "critic",
     "status": "todo",
-    "depends_on": ["F1-T1", "F1-T2"],
+    "depends_on": [
+      "F1-T1",
+      "F1-T2"
+    ],
     "assigned_to": "D",
     "input_files": [
       "GexDashboard.py",
