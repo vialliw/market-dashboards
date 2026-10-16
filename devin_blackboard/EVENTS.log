@@ -212,3 +212,18 @@ Evidence map:
 [2026-10-16] B | DONE F3-T1 | true root cause fixed: _finite_oi_rows drops nonfinite strike/OI before payout loop (225/230/235 np.argmin-first-NaN mechanism); new selected_lowest/highest_candidate band-edge flags emitted in packet + metric_definitions; meta.data_quality OI-conflation note; 24 offline tests (was 20), probe reproduces artifacts on zero-as-NaN fixture + verifies independent argmin 450/445/450, clean canonical unchanged; AC 3/3 PASS | files: GexDashboard.py, tests/test_gex_metrics.py, devin_blackboard/probe_f3_t1.py
 
 [2026-10-16T11:05:02.112515+00:00] [CHALLENGER] claimed F3-T2
+[2026-10-16] C | F3-T2 IN PROGRESS -> adversarial probes run
+
+[2026-10-16T11:14:21.283565+00:00] [CHALLENGER] completed F3-T2 -> APPROVED. probe_f3_t2.py: 40 adversarial checks all PASS — clean-data A/B vs pre-F3 commit (9a8f573^) identical on all 7 TSM expiries; one-sided NaN drops only that row (strike stays candidate, matches independent argmin); NaN-strike/inf-OI excluded; all-NaN/empty -> loud ValueError; tie -> lowest strike; band-edge flags fire on constraint-driven lowest+highest between strikes, literal edge -> boundary_hit+selected, fell_back/None/NaN-spot suppressed by guard; gamma_flip own gex filter covers NaN (all-NaN -> None); mutations: finite-filter revert -> artifact 225 + regression test fails (non-vacuous), payout-only-filter sim -> NaN-candidate hijack (outer filter load-bearing), flag-swap + fell_back-guard removal caught; packet emits bool flags + OI-conflation note verified live (NaN strike exports 0); pytest 24/24; diff clean (GexDashboard.py + tests + blackboard only); zero network. Non-blocking notes in STATE.md.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "review",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]

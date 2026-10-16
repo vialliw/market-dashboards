@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F3-T1 done by Agent B — 3/3 AC PASS; awaiting F3-T2 challenger)
+Last Updated: 2026-10-16 (F3-T2 done by Agent C — APPROVED; awaiting F3-T3 critic)
 Current Branch: main
 
 ## Repo
@@ -112,13 +112,49 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   fixture dfs; fixed returns independent argmin 450/445/450; clean
   canonical max_pain unchanged (435/450/445/460/470/420/450);
   edge flags correct. ACs: 3/3 PASS. Commit 9a8f573 (+bde2c93 wrap).
+- F3-T2 (C, done): adversarial review APPROVED. Probe
+  devin_blackboard/probe_f3_t2.py: 40 checks all PASS —
+  (1) clean-data A/B vs pre-F3 committed module (git show
+      9a8f573^): identical max_pain + constrained results on all
+      7 TSM expiries (435/450/445/460/470/420/450); dropping
+      all-NaN-OI strikes never moved any fixture argmin.
+  (2) One-sided NaN: only the NaN row drops — the strike stays a
+      candidate via the finite side and matches an independent
+      finite-only argmin; NaN-strike and inf-OI rows excluded;
+      all-NaN-OI / empty / all-NaN-strike -> loud ValueError on
+      both fns; pain tie -> lowest strike (np.argmin first-min);
+      int-dtype df works.
+  (3) Band-edge flags: constraint-driven lowest+highest fire
+      between strikes with boundary_hit correctly False; literal
+      edge -> boundary_hit AND selected_lowest; single-eligible
+      band -> both flags (1-elem set is both endpoints); empty-band
+      fell_back / spot=None / spot=NaN -> flags suppressed by the
+      `not band_fell_back` guard; coincidental endpoint fires
+      (argmin IS lowest eligible even when band non-binding —
+      literal semantics, honestly documented, consumers can detect
+      binding via max_pain != max_pain_constrained).
+  (4) gamma_flip path protected by its own strike/gex finite
+      filter (NaN-OI rows are irrelevant — OI unused); all-NaN
+      gex -> None via len==0 guard.
+  (5) Mutations: reverting _finite_oi_rows -> artifact 225
+      returns AND the real regression test fails (non-vacuous);
+      simulating filter-only-in-payout -> NaN-strike candidate
+      hijacks argmin (outer filter load-bearing); flag-swap ->
+      between-strikes test fails; removing fell_back guard ->
+      flags misfire (guard load-bearing).
+  (6) Packet: selected_* emitted as bools; NaN-OI strike exports
+      OI=0 (conflation demonstrated, matching the data_quality
+      note); missing-OI rows excluded from payout sums;
+      metric_definitions documents flags + exclusion.
+  (7) pytest 24/24; diff audit 5a230fc..b01a26d: only
+      GexDashboard.py + tests/test_gex_metrics.py +
+      devin_blackboard/*; zero network (only fixture meta.source
+      string "yfinance").
+  Non-blocking notes below.
 
 ## Ready
 
-- F3-T2 (C, todo): adversarial review of F3-T1 — NaN-OI exclusion
-  must not alter clean-data results; argmin tie behavior; band-edge
-  flag semantics; provenance accuracy; mutation-check the regression
-  test; scope/diff audit; zero network.
+(none — F3-T3 critic gate is next)
 
 ## Notes for reviewers
 
@@ -153,3 +189,21 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   (d) NaN impliedVolatility passes through unflagged as NaN
   (NaN>2.0 is False) — pre-existing, unchanged; (e) flip at
   strike 0.0 would emit null via truthiness check — pre-existing.
+- F3-T2 non-blocking notes: (a) selected_*_candidate flags are
+  LITERAL "argmin is the lowest/highest eligible strike" — they
+  fire even when the band is not binding (probe: unconstrained
+  argmin == lowest eligible -> flag True with max_pain ==
+  max_pain_constrained); same caveat class as band_boundary_hit,
+  docstrings/metric_definitions state literal semantics, and
+  binding is detectable via max_pain != max_pain_constrained;
+  (b) a single-eligible-candidate band sets BOTH flags (the one
+  element is both lowest and highest — correct but worth
+  knowing); (c) _finite_oi_rows assumes numeric dtypes —
+  object-dtype OI (None/pd.NA) raises TypeError, a loud failure
+  (yfinance emits float64, so unreachable on the real path);
+  (d) one-sided missing OI silently contributes nothing — the
+  strike remains a candidate via its finite side, documented in
+  metric_definitions; (e) zero-OI-kept vs NaN-dropped candidate
+  sets differ in principle (a 0-OI strike is a valid settlement
+  candidate, a missing-OI strike is not) — intended semantics,
+  and empirically identical argmins on all 7 TSM expiries.

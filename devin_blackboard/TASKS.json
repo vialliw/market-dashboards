@@ -267,7 +267,7 @@
     "id": "F3-T2",
     "title": "Adversarial review of F3",
     "role": "challenger",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F3-T1"
     ],
