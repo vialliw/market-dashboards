@@ -495,5 +495,104 @@
       }
     ],
     "result": null
+  },
+  {
+    "id": "F6-T1",
+    "title": "Implement WellnessCheck.py + tests per approved plan",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F5-T3"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "AGENTS.md",
+      "tests/fixtures/TSM_ai_packet.json",
+      "GexDashboard.py"
+    ],
+    "output_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "tests/fixtures/*"
+    ],
+    "scope": "Implement the ChatGPT-APPROVED plan verbatim. The approved plan text follows — it is the binding spec (check_ids, severities, tolerances, eligibility directionality, unperformed semantics, exit codes 0/0/1/2, provenance, no-overwrite rule, independent reference implementations — NEVER import GexDashboard):\n\n# Implementation plan v4: WellnessCheck.py — post-generation AI-packet validator\n\nv4 addresses round-3 concerns with precise specifications. Separate\nscript; no GexDashboard.py imports (independent reference implementations);\nblackboard cycle F6 (B→C→D).\n\n## 1. Interface (unchanged)\n\n`python WellnessCheck.py <packet.json> [--snapshot raw.pkl] [--report report.json]`\nExit codes: 0 PASS / 0 WARN / 1 FAIL / 2 checker-internal error. Every run\nemits a structured report even on FAIL (see §6).\n\n## 2. Check table with exact rules\n\n| check_id | rule | severity |\n|---|---|---|\n| SCHEMA-01 | required fields/types; unique expiry keys; unique strike keys per expiry; schema_version in supported set {1.0} | FAIL |\n| NUMERIC-01 | no NaN/Inf tokens in emitted numerics; spot>0; all OI>=0; ISO expiry dates | FAIL |\n| AVAIL-01a | flag/null consistency: metrics_unavailable:true ⇔ all 7 payout fields null + data_quality reason in {no_finite_oi, insufficient_data}; flag:false ⇔ payout fields non-null | FAIL |\n| AVAIL-01b | **independent eligibility recompute** (production rule: eligible = >=2 distinct strikes having a finite OI row AND total finite OI>0 — note exported OI=0 is ambiguous between true-zero and missing-NaN): verdict is determined per direction — >=2 strikes with exported OI>0 UNAMBIGUOUSLY proves eligible (positive OI can never collapse to 0); the ineligible direction is ambiguous from the packet alone. With --snapshot: reconcile raw rows, exact eligibility + reason code verified (FAIL on mismatch). Without snapshot: flag-verdict emitted as 'unperformed (ambiguous without raw rows)' whenever <2 positive-OI strikes; reason-code check always 'unperformed' without snapshot. Regression fixtures: raw (100,OI=1)/(110,OI=0) vs (100,OI=1)/(110,NaN) — identical exports, opposite eligibility | FAIL / unperformed |\n| AVAIL-01c | **separate nullability**: gamma_flip nullable independent of payout availability (it has its own eligibility path); payout metrics null only under unavailability | FAIL |\n| AGG-01 | per-expiry Σ strike net_gex ≈ expiry net_gex; Σ expiry net_gex ≈ total_net_gex. Tolerance: `abs_err <= max(1e-9, 1e-9*max_magnitude)` — absolute floor 1e-9 covers float64 serialization round-trip error (~1e-15 relative at 1e6 scale is too tight for hand-edited JSON; floor chosen to pass honest rounding, fail real mismatch); tests cover cancellation, rounding, material mismatch | FAIL |\n| MAXPAIN-01 | independent canonical recompute: rows filtered to finite strike & finite OI; candidates = sorted unique strikes; pain(s)=Σ call_OI·max(s−K,0)+put_OI·max(K−s,0); argmin = first-min in ascending order; packet max_pain must equal it (exact float== on identical inputs; also report ties count) | FAIL |\n| MAXPAIN-02 | constrained recompute: payouts computed over the FULL usable chain (all finite-OI strikes K), only the settlement CANDIDATES s restricted to strikes inside [0.7·spot,1.3·spot]; empty band → fell_back:true + all strikes as candidates; boundary_hit ⇔ argmin==band edge exactly; selected_lowest/highest ⇔ argmin==min/max of eligible candidates; all packet flags must match recomputation. Test includes out-of-band OI that moves the constrained minimizer | FAIL |\n| FLIP-01 | independent recompute of the production rule: drop nonfinite strike/gex; group-sum by strike ascending; material iff \\|gex\\| >= max(0.01·max_abs, 1e-3); whole-slice max_abs<1e-3 → null; crossings = consecutive material strikes where left<0<right; RETURNED VALUE = the upper (positive-side) strike of the crossing pair — NO interpolation, exact comparison; spot present → argmin over |crossing−spot|, equidistant tie → first (lower) crossing; packet gamma_flip must equal this strike exactly or both null | FAIL |\n| IV-01 | stale_iv:true ⇔ raw_implied_volatility>2.0 AND implied_volatility:null; no strike with unflagged IV>2.0 | FAIL |\n| SNAP-01 | when --snapshot supplied: (a) FAIL if snapshot rows cannot be reconciled to packet strikes by (expiry, strike, type) keys — permitted export transforms: NaN→0 collapse of OI, NaN→null IV; any other OI/gex mismatch beyond 1e-6 rel → FAIL; (b) when NOT supplied: checks SNAP-*, and OI-missingness portions of provenance, are emitted as status:\"unperformed\" with note \"no snapshot\" — never silently skipped | FAIL / unperformed |\n| COVER-01 | expiries with 0 strikes; sparse chains (<10 strikes); >50% missing-OI share when snapshot given | WARN |\n| FRESH-01 | generated_utc older than 72h (configurable --max-age-hours) | WARN |\n\n## 3. Provenance (unchanged intent, now explicit)\n\npacket_hash (SHA-256 of file bytes), snapshot_hash when supplied,\npacket generated_utc, WellnessCheck.py git commit resolved from the\nchecker's OWN source directory (`git -C <dir of WellnessCheck.py>\nrev-parse HEAD`); when the source is not under version control, emit\ncode_commit:null + a \"not version-controlled\" provenance note rather than\na wrong/absent value, schema_version,\nper-expiry counts {strikes, finite_oi_rows, excluded_rows, stale_iv_rows,\nmetrics_unavailable}.\n\n## 4. Failure/edge handling (§6 spec)\n\n- Malformed JSON, unreadable file, unsupported schema_version →\n  structured report `{overall_status:\"FAIL\", checks:[{check_id:\"INPUT-01\",\n  status:\"FAIL\", ...}]}` written if --report path given, exit 1.\n- Checker-internal exception → report `{overall_status:\"FAIL\",\n  checks:[{check_id:\"CHECKER-ERR\", status:\"FAIL\", note:<repr>}]}` +\n  nonzero exit 2; no traceback-only failures.\n- Any check whose inputs are absent → status:\"unperformed\" (not PASS).\n- Report written to --report path or `validation/<packet>_report_<ts>.json`;\n  artifacts NEVER overwrite the input packet (open output in 'x'-safe mode\n  / distinct filename).\n\n## 5. Tests (offline, tests/test_wellness.py)\n\n- Hand-calculated mini-books: 3-strike book with known argmin computed by\n  hand; flip crossing cases incl. exact-zero gex (non-material), crossing\n  at floor boundary 1e-3, multiple crossings → nearest-spot; constrained\n  boundary-hit vs fell_back vs between-strikes selection.\n- PASS: TSM fixture packet; WARN: stale generated_utc; FAIL-per-check:\n  tampered max_pain/flip/aggregation/IV-provenance/unavailability-flag-on-\n  eligible-chain (AVAIL-01b catches false-unavailable)/false-available-on-\n  degenerate.\n- INPUT-01/CHECKER-ERR paths tested (malformed file, missing file).\n- Snapshot reconciliation: real TSM pickle → PASS + counts; mismatched\n  snapshot (different ticker data) → FAIL.\n\n## 6. Task registration (unchanged)\n\nF6-T1 B executor → F6-T2 C challenger (mutation probes corrupting each\nchecked invariant) → F6-T3 D critic (independent re-verification incl.\nhand-computed numbers). CI wiring deferred to a later approved cycle.\n",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all tests pass incl. hand-calculated + tamper FAIL cases"
+      },
+      {
+        "id": "AC-2",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      },
+      {
+        "id": "AC-3",
+        "check": "cli",
+        "command": "python WellnessCheck.py tests\fixtures\\TSM_ai_packet.json",
+        "expected_exit": 0
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F6-T2",
+    "title": "Adversarial review of WellnessCheck",
+    "role": "challenger",
+    "status": "todo",
+    "depends_on": [
+      "F6-T1"
+    ],
+    "assigned_to": "C",
+    "input_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Adversarially review F6-T1 against the approved plan. Attack each check: tamper packets so a SPECIFIC check_id must FAIL while others pass; verify 'unperformed' semantics with/without snapshot; false-unavailability and ambiguous-eligibility fixtures; unrelated-ValueError/exception paths produce structured FAIL; outputs never overwrite inputs; no GexDashboard import in WellnessCheck.py. Mutation tests on the checker itself (e.g. weaken tolerance -> does a test catch it?). APPROVED or CONCERNS with evidence.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "review",
+        "expected": "APPROVED or blocking findings"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F6-T3",
+    "title": "Critic gate F6",
+    "role": "critic",
+    "status": "todo",
+    "depends_on": [
+      "F6-T2"
+    ],
+    "assigned_to": "D",
+    "input_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "devin_blackboard/STATE.md",
+      "charts/TSM_ai_packet.json",
+      "charts/TSM_ai_packet_prefix.json"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Independent gate: re-run pytest; run WellnessCheck on the live post-fix charts/TSM_ai_packet.json (expect PASS/WARN not FAIL) AND the pre-fix charts/TSM_ai_packet_prefix.json (expect FAIL with the right check_ids — it contains artifact max_pain 225/230/235 and artifact flips 210-310). Report the actual check_ids fired. Diff scope clean; no network. PASS/FAIL + numbers.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "independent_verification",
+        "expected": "PASS; live packets verdicts reported"
+      }
+    ],
+    "result": null
   }
 ]
