@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F5-T1 done by Agent B — awaiting challenger/critic)
+Last Updated: 2026-10-16 (F5-T2 done by Agent C — APPROVED, awaiting critic)
 Current Branch: main
 
 ## Repo
@@ -362,15 +362,101 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
   F4-T2 non-blocking test-rigor gap).
   pytest: 33 passed. ACs: 2/2 PASS.
   Commit bb9f7b0.
+- F5-T2 (C, done): adversarial review APPROVED.
+  Probe devin_blackboard/probe_f5_t2.py — 67 PASS
+  checks, 8 non-blocking notes:
+  (1) Eligibility rule: 2/3-strike tiny-OI chains,
+      one-sided books, and a zero-OI second strike
+      all stay ELIGIBLE and match an independent
+      plain-Python argmin — the rule cannot flag a
+      usable chain; every degenerate shape
+      (1 distinct strike both-rows-finite, 2
+      strikes/1 finite-OI, zero-total-OI,
+      negative-total-OI, inf-OI-dropped, all-NaN,
+      absent expiry) lands on the right reason.
+      <2 is the minimal non-vacuous cut (a
+      1-candidate argmin carries zero
+      information, a 2-candidate argmin
+      discriminates) — defensible vs <3 which
+      would flag honest thin books.
+  (2) Scoped absorption verified: 5 unrelated
+      ValueError shapes propagate (incl. case-
+      mangled magic message), exact + substring
+      magic message absorbed -> insufficient_
+      data, constrained-fn-only raise still
+      yields packet nulls, 8 non-ValueError
+      types propagate, gamma_flip-side and
+      eligibility-fn failures propagate
+      (outside try). This numpy emits the magic
+      message.
+  (3) Partial availability: degenerate payout +
+      real flip emits metrics_unavailable:true
+      + nulls + gamma_flip:110.0 + per-strike
+      is_gamma_flip; 4-state distinguishability
+      matrix verified; consumers gate on the
+      flag.
+  (4) A/B vs bb9f7b0^ module on all 7 TSM
+      fixture expiries: per-expiry dicts BYTE-
+      identical (json.dumps sort_keys),
+      whole-book identical, meta diff = doc
+      strings only.
+  (5) INTC live case: 1-strike call_oi=2/put_oi=0
+      -> insufficient_data + nulls; raw
+      compute_max_pain still returns vacuous
+      190 (documented); healthy expiry in the
+      same book unaffected.
+  (6) Mutations vs REAL pytest: 8/8 meaningful
+      mutants caught — threshold 2->1, absorb-
+      all-ValueError, null-flip-on-unavailable,
+      nunique->len, <=-><, pre-check removal
+      (via all-NaN reason degradation), wrong
+      reason string, inverted flag.
+  (7) pytest 33/33; diff audit bb9f7b0^..084bebf:
+      only GexDashboard.py + tests/test_gex_
+      metrics.py + devin_blackboard/*; zero
+      network in tests.
+  Non-blocking notes below.
 
 ## Ready
 
-- F5-T2 (C, todo): adversarial review of F5-T1 —
-  now unblocked (F5-T1 done).
-- F5-T3 (D, todo): critic gate — follows F5-T2.
+- F5-T3 (D, todo): critic gate — unblocked
+  (F5-T2 APPROVED).
 
 ## Notes for reviewers
 
+- F5-T2 non-blocking notes: (a) a one-sided
+  2-strike chain (calls-only / puts-only) is
+  eligible and its argmin lands mechanically on
+  an extreme strike — the true argmin of that
+  book, honestly computed; whether one-sided
+  thin chains carry signal is a policy call,
+  out of scope; (b) an expiry with a real
+  gamma_flip + flagged payout is UNREACHABLE on
+  the real pipeline — material gex requires
+  nonzero finite OI at >=2 strikes, which makes
+  the slice eligible; per-metric availability
+  is defense-in-depth for cross-fed/synthetic
+  frames (the new tests exercise it via
+  synthetic gex, honestly documented);
+  (c) the magic-message check is a SUBSTRING
+  match — any ValueError containing numpy's
+  'attempt to get argmin of an empty sequence'
+  is absorbed, but only inside the try around
+  the two payout calls (narrow blast radius);
+  if a future numpy rewords the message, a real
+  empty-argmin would propagate loudly — fail-
+  loud direction; (d) after a constrained-fn-
+  only failure the internal metrics dict can
+  hold a computed max_pain alongside
+  unavailable=reason — both consumers gate on
+  'unavailable' so external state is always
+  consistent; (e) inf-OI expiries crash the
+  packet EXPORTER (int(inf) in strike export,
+  OverflowError) — verified identical on
+  bb9f7b0^, pre-existing and outside the
+  metrics path; (f) mixed-sign OI summing
+  positive passes the gate (negative OI is
+  invalid input, garbage-in class).
 - Semantics change: compute_max_pain(df, spot=X) now IGNORES spot —
   the banded variant is exclusively compute_max_pain_constrained().
   Packet field "max_pain" is again the canonical unconstrained value

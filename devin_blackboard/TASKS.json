@@ -446,7 +446,7 @@
     "id": "F5-T2",
     "title": "Adversarial review of F5",
     "role": "challenger",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F5-T1"
     ],
