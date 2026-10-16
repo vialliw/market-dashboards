@@ -178,3 +178,34 @@ Evidence map:
   }
 ]
 [2026-10-16T10:59:30.864155+00:00] [EXECUTOR] claimed F3-T1
+[2026-10-16T11:03:58.956716+00:00] [EXECUTOR] completed F3-T1 -> NaN-OI root cause fixed: new _finite_oi_rows() drops nonfinite-strike/nonfinite-openInterest rows in _payout_pain + both compute_max_pain fns before the payout loop (docstring documents the original 225/230/235 np.argmin-first-NaN mechanism). New band-edge flags selected_lowest_candidate/selected_highest_candidate distinguish literal band_boundary_hit from constraint-driven eligible-endpoint selection; both emitted in packet + metric_definitions. meta.data_quality notes exported OI conflates true-zero vs missing (NaN-collapsed-to-0). Tests 20->24: NaN-OI regression (independent argmin 420 not lowest strike, docstring cites 225/230/235 mechanism, all-NaN slice -> ValueError), between-strikes band-edge flags (lowest + highest), all-NaN gex -> None, packet flag assertions, data_quality conflation note. pytest 24 passed. Probe probe_f3_t1.py: naive original reproduces exactly 225/230/235 on zero-as-NaN fixture dfs; fixed returns independent argmin 450/445/450; clean canonical max_pain unchanged 435/450/445/460/470/420/450; edge flags PASS. AC 3/3 PASS.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "........................                                                 [100%]\n24 passed in 4.53s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  },
+  {
+    "id": "AC-3",
+    "check": "probe",
+    "command": "python devin_blackboard/probe_f3_t1.py",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "0.0 want=450.0\nPASS between-strikes lowest-candidate flags | {'candidate_band': [147.0, 273.0], 'band_fell_back': False, 'band_boundary_hit': False, 'selected_lowest_candidate': True, 'selected_highest_candidate': False, 'max_pain': np.float64(150.0)}\nPASS between-strikes highest-candidate flags | {'candidate_band': [147.0, 273.0], 'band_fell_back': False, 'band_boundary_hit': False, 'selected_lowest_candidate': False, 'selected_highest_candidate': True, 'max_pain': np.float64(200.0)}\n\nALL PASS\n"
+  }
+]

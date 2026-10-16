@@ -225,7 +225,7 @@
     "id": "F3-T1",
     "title": "Fix true max_pain root cause (NaN OI argmin hijack) + band-edge selection flag",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F2-T3"
     ],
