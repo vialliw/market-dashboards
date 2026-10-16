@@ -571,7 +571,7 @@
     "role": "critic",
     "status": "todo",
     "depends_on": [
-      "F6-T2"
+      "F6-T4"
     ],
     "assigned_to": "D",
     "input_files": [
@@ -591,6 +591,42 @@
         "id": "AC-1",
         "check": "independent_verification",
         "expected": "PASS; live packets verdicts reported"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F6-T4",
+    "title": "Remediate F6-T2 findings F1/F2/F3 in WellnessCheck.py",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F6-T2"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "devin_blackboard/STATE.md",
+      "devin_blackboard/probe_f6_t2.py"
+    ],
+    "output_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py"
+    ],
+    "scope": "Challenger F6-T2 returned CONCERNS with 3 verified defects in WellnessCheck.py. Fix all three:\n\nF3 (blocking): MAXPAIN-02 false-positives on honest packets — the NaN-vs-0 export ambiguity must apply to the CONSTRAINED candidate set too. When the constrained verdict depends on exported-0 strikes inside the band (i.e., band eligibility would change if those were missing), and no --snapshot is available to reconcile, emit status 'unperformed' for the ambiguity-dependent part (verdict-level: mark MAXPAIN-02 unperformed with a clear note) rather than FAIL. When --snapshot reconciles raw rows, compute candidates from the reconciled set and FAIL on true mismatch. Unreachable-without-ambiguity cases still verify normally. See probe_f6_t2.py F3 section for the exact reproduction.\n\nF1: unreadable/missing --snapshot file currently surfaces as CHECKER-ERR exit 2 because _sha256(snapshot_path) throws in build_report before SNAP-01's FAIL is emitted. Fix ordering: input-error on snapshot must produce SNAP-01 FAIL + exit 1 (or a dedicated INPUT check FAIL), not checker-internal error.\n\nF2: SNAP-01 never iterates raw-only expiries — a snapshot expiry absent from the packet must be reconciled and produce FAIL (unreconciled rows), not silent PASS.\n\nAlso: add tests covering all three (honest-packet no-FAIL regression for F3 incl. the band-all-NaN case; unreadable snapshot -> exit 1 + SNAP-01 FAIL for F1; raw-only expiry -> SNAP-01 FAIL for F2). Offline only; minimal diffs.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all pass incl. the three regression cases"
+      },
+      {
+        "id": "AC-2",
+        "check": "reprobe",
+        "command": "python devin_blackboard/probe_f6_t2.py",
+        "expected": "F1/F2/F3 sections now pass"
       }
     ],
     "result": null
