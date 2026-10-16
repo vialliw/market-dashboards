@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F1-T1 done by Agent B)
+Last Updated: 2026-10-16 (F1-T2 review done by Agent C — APPROVED)
 Current Branch: main
 
 ## Repo
@@ -25,7 +25,12 @@ cycle — NO live yfinance calls; tests must use tests/fixtures/TSM_ai_packet.js
   note in meta. tests/test_gex_metrics.py + tests/conftest.py added —
   11 offline tests on TSM fixture, all 5 ACs PASS. Fixture: 10/16 flip
   430.0 (was 370), aggregate 430.0, all max_pain inside [295.4, 548.7].
-
-## Active Blocker
+- F1-T2 (C, done): adversarial review APPROVED. Mutation probe (pre-fix
+  fns vs TSM fixture) confirms tests non-vacuous; nearest-spot correct
+  across multi-crossings; materiality filter cannot empty; band
+  fallback/ties OK; stale_iv preserves OI/GEX; scope audit clean; no
+  network in tests. Minor notes only (np.int64 return type on int-strike
+  df — wrapped by float() in packet path; flip-at-0 truthiness edge;
+  empty-df max_pain ValueError pre-existing). F1-T3 (D) ready.
 
 None.
