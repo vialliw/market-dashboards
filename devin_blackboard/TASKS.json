@@ -630,5 +630,44 @@
       }
     ],
     "result": null
+  },
+  {
+    "id": "F6-T5",
+    "title": "Remediate ChatGPT impl-review concerns: MAXPAIN-01 ambiguity + mutation documentation",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F6-T4"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "devin_blackboard/STATE.md",
+      "devin_blackboard/probe_f6_t2.py",
+      "devin_blackboard/probe_f6_t3.py",
+      "devin_blackboard/f6_t2_mutants.py"
+    ],
+    "output_files": [
+      "WellnessCheck.py",
+      "tests/test_wellness.py",
+      "devin_blackboard/F6_MUTATION_REPORT.md"
+    ],
+    "scope": "ChatGPT review of the F6 implementation returned 2 blocking concerns:\n\nC1 (blocking): MAXPAIN-01 has the same exported-0/NaN ambiguity hole fixed for MAXPAIN-02 in F6-T4. Counterexample (verified by reviewer): calls at strikes 90/100/110 with raw OI NaN/1/1, no puts. Finite-OI candidates {100,110} -> production max_pain=100; exported OI 0/1/1 adds strike 90 which ties at zero payout and wins ascending-first argmin -> checker expects 90 -> honest packet FAILs. Fix: apply the same ambiguity handling to check_max_pain — if exported-0 (ambiguous) candidate strikes can change the canonical verdict and no --snapshot reconciles, emit 'unperformed'; with snapshot, recompute candidates from reconciled raw rows. Add the 90/100/110 regression test.\n\nC2 (blocking): the 10 surviving mutants from devin_blackboard/f6_t2_mutants.py must each be documented in devin_blackboard/F6_MUTATION_REPORT.md: mutant name, classification (equivalent-mutation / narrow-edge-verified-correct / behavior-changing defect), probe input, expected vs actual against the mutated checker, final-revision tie. Any surviving behavior-changing defect gets a regression test in tests/test_wellness.py.\n\nOffline only; minimal diffs; blackboard files per protocol.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all pass incl. MAXPAIN-01 90/100/110 regression"
+      },
+      {
+        "id": "AC-2",
+        "check": "report",
+        "command": "type devin_blackboard\\F6_MUTATION_REPORT.md",
+        "expected": "all 10 survivors enumerated w/ classification + evidence"
+      }
+    ],
+    "result": null
   }
 ]
