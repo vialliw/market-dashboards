@@ -170,7 +170,7 @@
     "id": "F2-T2",
     "title": "Adversarial review of F2 amendments",
     "role": "challenger",
-    "status": "ready",
+    "status": "in_progress",
     "depends_on": [
       "F2-T1"
     ],

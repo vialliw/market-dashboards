@@ -141,3 +141,5 @@ Evidence map:
   }
 ]
 [2026-10-16] B | DONE F2-T1 | F2 amendments: MIN_MATERIAL_GEX=1e-3 absolute floor + relative 1%-of-max (noise slice -> None, nonfinite dropped); canonical unconstrained max_pain + separately labeled compute_max_pain_constrained with band/fell_back/boundary_hit metadata; raw_implied_volatility provenance + meta.metric_definitions; 20 offline tests (was 11), probe verifies all 7 expiries independently, 3/3 AC PASS | files: GexDashboard.py, tests/test_gex_metrics.py, devin_blackboard/probe_f2_t1.py
+
+[2026-10-16T10:44:02.096430+00:00] [CHALLENGER] claimed F2-T2
