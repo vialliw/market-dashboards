@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F2-T2 done by Agent C — APPROVED; F2-T3 ready)
+Last Updated: 2026-10-16 (F2-T3 done by Agent D — PASS; cycle F2 CLOSED)
 Current Branch: main
 
 ## Repo
@@ -66,10 +66,30 @@ tests must use tests/fixtures/TSM_ai_packet.json.
   drop, metric-key rename). pytest 20/20; zero network; diff scope
   clean (GexDashboard.py + tests/test_gex_metrics.py + blackboard).
   Non-blocking notes below.
+- F2-T3 (D, done): critic gate PASS. pytest 20/20 (5.73s); zero
+  network in tests (only fixture meta.source string). Independent
+  plain-Python payout recompute over ALL 105 strikes of TSM
+  2026-10-16: argmin=435.0 (unique, payout=1,269,250.00) — the
+  reported 435 is the TRUE unconstrained argmin, not a band
+  artifact (it merely also lies inside [295.435, 548.665]);
+  compute_max_pain ignores spot as designed; constrained variant
+  agrees, no fell_back/boundary_hit. All 7 expiries independently
+  verified: 435/450/445/460/470/420/450, all unique argmins.
+  gamma_flip: alternating +/-1e-12 -> None, all-zero -> None,
+  9e-4 & 9.999e-4 -> None, +/-1e-3 and +/-1.1e-3 -> flip at 420
+  (floor inclusive at 1e-3). Fresh build_ai_packet on real fixture
+  expiry: max_pain + max_pain_constrained + candidate_band +
+  fell_back + boundary_hit all emitted; 23 stale strikes carry
+  implied_volatility:null + raw_implied_volatility>2.0 +
+  stale_iv:true; meta.metric_definitions + data_quality accurate.
+  Diff audit ccd364e..HEAD: only GexDashboard.py +
+  tests/test_gex_metrics.py + devin_blackboard/*; tree clean.
+  Probe: devin_blackboard/probe_f2_t3.py (20/20 checks).
+  Cycle F2 CLOSED.
 
 ## Ready
 
-- F2-T3 (D): critic gate for F2 (depends on F2-T2 — now unblocked).
+- (none — cycle F2 complete)
 
 ## Notes for reviewers
 
