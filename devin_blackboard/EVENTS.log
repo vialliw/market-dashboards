@@ -75,3 +75,34 @@ Evidence map:
   }
 ]
 [2026-10-16T09:58:06.213200+00:00] [CRITIC] claimed F1-T3
+[2026-10-16T09:59:44.905990+00:00] [CRITIC] completed F1-T3 -> PASS. AC-1 pytest_full_suite: 11 passed in 5.60s (exit 0). AC-2 module_imports: import GexDashboard exit 0. AC-3 no_network_in_tests: findstr yfinance tests/*.py exit 1 (no matches). Independent probe (%TEMP%/probe_f1_t3.py, imports real GexDashboard, rebuilds per-expiry dfs from TSM_ai_packet.json, spot=422.05): 2026-10-16 flip=430.0 in [425,435] PASS; max_pain=435.0 in [295.435,548.665] PASS; all 7 expiries flip in [430,475] near spot (packet artifacts were 370/230/250/310); all max_pain in [420,475] in-band; far-expiry 2026-11-27 flip=475.0 sane. Diff audit fe19b3b..ccd364e: only GexDashboard.py + tests/conftest.py + tests/test_gex_metrics.py + blackboard files (all in output_files/allowed); no yfinance/requests/urllib/socket added; git status clean.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest_full_suite",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "...........                                                              [100%]\n11 passed in 4.20s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "module_imports",
+    "command": "python -c \"import GexDashboard\"",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  },
+  {
+    "id": "AC-3",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  }
+]
