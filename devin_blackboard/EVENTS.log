@@ -50,3 +50,5 @@ Evidence map:
   }
 ]
 [2026-10-16] B | DONE F1-T1 | gamma_flip+max_pain spot-aware fix, stale_iv flag; 11 offline tests, 5/5 AC PASS | files: GexDashboard.py, tests/test_gex_metrics.py, tests/conftest.py
+
+[2026-10-16T09:52:17.022925+00:00] [CHALLENGER] claimed F1-T2
