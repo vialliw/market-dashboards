@@ -411,7 +411,7 @@
     "id": "F5-T1",
     "title": "Degenerate-chain insufficient_data flag + scoped ValueError absorption",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F4-T3"
     ],

@@ -315,3 +315,25 @@ Evidence map:
   }
 ]
 [2026-10-16T14:15:28.533817+00:00] [EXECUTOR] claimed F5-T1
+[2026-10-16T14:22:45.421484+00:00] [EXECUTOR] completed F5-T1 -> Degenerate-chain eligibility + scoped absorption implemented. (1) NEW MIN_PAYOUT_STRIKES=2 + _payout_ineligibility(sub): returns 'no_finite_oi' (zero finite-OI rows), 'insufficient_data' (<2 distinct finite-OI strikes OR total finite OI <=0 — the live INTC 2026-10-19 single-strike/call_oi=2/put_oi=0 case yields a vacuous argmin), else None. (2) _per_expiry_metrics now always returns a dict {max_pain, max_pain_constrained, gamma_flip, unavailable}: eligibility pre-check means payout fns are never called on unusable slices; gamma_flip computed independently (per-metric availability — a real crossing is still emitted on a flagged expiry); belt-and-suspenders except absorbs ONLY ValueError matching 'attempt to get argmin of an empty sequence', all other ValueErrors + non-ValueErrors propagate. (3) build_ai_packet: unavailable expiry emits null payout fields + metrics_unavailable:true + data_quality=reason + computed gamma_flip; meta.data_quality + metric_definitions document 'insufficient_data' + new payout_eligibility entry. (4) plot loop: max-pain vlines skipped w/ 'max_pain unavailable (<reason>)' annotation; gamma_flip line may still draw. Tests 26 -> 33: INTC single-strike -> insufficient_data (raw compute_max_pain still returns vacuous 190.0), eligibility boundaries (2-strike eligible, 1-strike-both-rows ineligible, 2-strike-1-NaN-OI ineligible), zero-total-OI, partial availability (degenerate payout + real gamma_flip 110.0), unrelated ValueError propagates, known empty-argmin ValueError absorbed -> insufficient_data, KeyError/TypeError propagate (closes F4-T2 test-rigor gap). pytest 33/33; AC 2/2 PASS. Commit bb9f7b0.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ".................................                                        [100%]\n33 passed in 6.53s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  }
+]
