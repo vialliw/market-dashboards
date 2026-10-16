@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F5-T2 done by Agent C — APPROVED, awaiting critic)
+Last Updated: 2026-10-16 (F5-T3 done by Agent D — critic gate PASS, cycle F5 CLOSED)
 Current Branch: main
 
 ## Repo
@@ -416,11 +416,68 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
       metrics.py + devin_blackboard/*; zero
       network in tests.
   Non-blocking notes below.
+- F5-T3 (D, done): critic gate PASS. Probe
+  devin_blackboard/probe_f5_t3.py — 26/26
+  checks. pytest 33/33 (7.66s); zero network
+  in tests (only fixture meta.source string
+  "yfinance").
+  (A) INTC live case reproduced inside a
+      two-expiry packet (spot=100): dead
+      2026-10-19 (1 strike 190, call_oi=2,
+      put_oi=0) emits metrics_unavailable:true
+      + data_quality:'insufficient_data' + all
+      7 payout fields explicit null +
+      gamma_flip:null (honest — a single
+      strike can host no crossing); strike row
+      still exported (190/2/0); the vacuous
+      190 argmin is never emitted. Healthy
+      2026-11-20 in the SAME packet computes
+      normally: metrics_unavailable:false, no
+      data_quality key, max_pain=100.0 ==
+      independent plain-Python payout argmin
+      (payout=1500.0), constrained=100.0,
+      band [70,130], gamma_flip=110.0, bool
+      flags real. Raw compute_max_pain still
+      returns vacuous 190.0 on direct misuse
+      (documented).
+  (B) Scoped absorption: injected
+      ValueError('totally unrelated message')
+      propagates out of build_ai_packet AND
+      out of _per_expiry_metrics via the
+      constrained fn; injected numpy
+      'attempt to get argmin of an empty
+      sequence' absorbed -> metrics_
+      unavailable:true + insufficient_data +
+      gamma_flip still computed (110.0);
+      injected KeyError propagates;
+      case-mangled magic message propagates
+      (not a blanket ValueError catch);
+      gamma_flip-side RuntimeError propagates
+      (outside the payout try).
+  (C) Partial availability: degenerate
+      payout expiry (1 distinct finite-OI
+      strike) with a material gex crossing
+      emits metrics_unavailable:true +
+      insufficient_data + 7 null payout
+      fields WHILE reporting gamma_flip:
+      110.0 == independent plain-Python
+      material-crossing recompute;
+      is_gamma_flip flag set on strike 110.
+  (D) all-NaN-OI expiry -> 'no_finite_oi'
+      (distinguishable from
+      'insufficient_data'); meta documents
+      metrics_unavailable + insufficient_data
+      + payout_eligibility.
+  (E) Diff audit bb9f7b0^..HEAD: only
+      GexDashboard.py +
+      tests/test_gex_metrics.py +
+      devin_blackboard/*; tree clean.
+      Cycle F5 CLOSED.
 
 ## Ready
 
-- F5-T3 (D, todo): critic gate — unblocked
-  (F5-T2 APPROVED).
+- (none — cycle F5 closed; awaiting
+  orchestrator review/next cycle)
 
 ## Notes for reviewers
 

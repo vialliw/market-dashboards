@@ -356,3 +356,18 @@ Evidence map:
   }
 ]
 [2026-10-16T14:35:04.495450+00:00] [CRITIC] claimed F5-T3
+[2026-10-16] D | DONE F5-T3 | critic gate PASS. probe_f5_t3.py 26/26 checks. pytest 33/33 (7.66s); zero network in tests (only fixture meta.source string "yfinance"). (A) INTC live case in 2-expiry packet (spot=100): dead 2026-10-19 (strike 190, call_oi=2, put_oi=0) -> metrics_unavailable:true + data_quality:insufficient_data + 7 explicit null payout fields + gamma_flip:null; strike row exported (190/2/0); vacuous 190 never emitted. Healthy 2026-11-20 same packet: metrics_unavailable:false, no data_quality key, max_pain=100.0 == independent plain-Python argmin (payout=1500.0), constrained=100.0, band [70,130], gamma_flip=110.0. Raw compute_max_pain still returns vacuous 190.0 (documented). (B) Scoped absorption: unrelated ValueError propagates (both payout fns); empty-argmin ValueError absorbed -> insufficient_data + flip still computed; KeyError propagates; case-mangled magic message propagates; gamma_flip-side RuntimeError propagates. (C) Partial availability: degenerate payout + material gex crossing -> metrics_unavailable:true + nulls + gamma_flip:110.0 == independent recompute + is_gamma_flip set. (D) all-NaN-OI -> no_finite_oi; meta docs ok. (E) Diff audit bb9f7b0^..HEAD: only GexDashboard.py + tests/test_gex_metrics.py + devin_blackboard/*; tree clean. Cycle F5 CLOSED. | files: devin_blackboard/probe_f5_t3.py, devin_blackboard/STATE.md, devin_blackboard/EVENTS.log
+
+[2026-10-16T14:39:43.424785+00:00] [CRITIC] completed F5-T3 -> Critic gate PASS. pytest 33/33 (7.66s); zero network in tests. probe_f5_t3.py 26/26: INTC 1-strike expiry (190, call_oi=2/put_oi=0) -> metrics_unavailable:true + insufficient_data + 7 null payout fields, healthy expiry same packet computes (max_pain=100.0==indep argmin, flip=110.0); unrelated ValueError + KeyError + case-mangled msg propagate, empty-argmin ValueError absorbed; partial availability flip=110.0 under metrics_unavailable; diff bb9f7b0^..HEAD only GexDashboard.py+test_gex_metrics.py+blackboard; tree clean. Cycle F5 CLOSED.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "independent_verification",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]

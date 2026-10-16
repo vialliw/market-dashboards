@@ -473,7 +473,7 @@
     "id": "F5-T3",
     "title": "Critic gate F5",
     "role": "critic",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F5-T2"
     ],
