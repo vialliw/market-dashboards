@@ -357,7 +357,7 @@
     "id": "F4-T2",
     "title": "Adversarial review of F4",
     "role": "challenger",
-    "status": "todo",
+    "status": "in_progress",
     "depends_on": [
       "F4-T1"
     ],

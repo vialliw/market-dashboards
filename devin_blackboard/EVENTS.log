@@ -269,3 +269,5 @@ Evidence map:
     "output": ""
   }
 ][2026-10-16] B | DONE F4-T1 | unusable-expiry tolerance: _per_expiry_metrics bundle (ValueError-only catch); all-NaN-OI/absent expiry -> null metrics + metrics_unavailable:true + data_quality reason; whole-book + healthy expiries unaffected; plot omits markers w/ note; raw fns still raise; 26 offline tests (was 24); AC 2/2 PASS | files: GexDashboard.py, tests/test_gex_metrics.py
+
+[2026-10-16T13:58:27.510264+00:00] [CHALLENGER] claimed F4-T2
