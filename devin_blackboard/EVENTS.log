@@ -445,3 +445,5 @@ Evidence map:
 ]
 
 [2026-10-16] B | DONE F6-T4 | remediated F6-T2 findings F1/F2/F3 in WellnessCheck.py: MAXPAIN-02 exported-0/NaN candidate ambiguity -> unperformed without snapshot / reconciled via --snapshot (raw finite-OI rows); unreadable --snapshot -> SNAP-01 FAIL + exit 1 (was CHECKER-ERR exit 2); raw-only snapshot expiries -> SNAP-01 FAIL; tests 74->78, pytest 78/78, probe 97/97, ACs 2/2 | files: WellnessCheck.py, tests/test_wellness.py, devin_blackboard/probe_f6_t2.py
+
+[2026-10-16T17:37:59.758889+00:00] [CRITIC] claimed F6-T3

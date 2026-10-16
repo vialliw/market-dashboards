@@ -569,7 +569,7 @@
     "id": "F6-T3",
     "title": "Critic gate F6",
     "role": "critic",
-    "status": "todo",
+    "status": "in_progress",
     "depends_on": [
       "F6-T4"
     ],
