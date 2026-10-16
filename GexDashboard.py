@@ -116,7 +116,33 @@ def compute_gex(df, spot, r=0.01):
 # =========================
 # Max Pain
 # =========================
+def _finite_oi_rows(df):
+    """Rows that can honestly contribute to a
+    payout sum: finite strike AND finite
+    openInterest.
+
+    yfinance emits NaN openInterest on dead
+    strikes; a single NaN-OI row turns EVERY
+    pain sum NaN and np.argmin then silently
+    returns the first NaN index — the lowest
+    strike. This is the mechanism behind the
+    original 225/230/235 max_pain artifacts.
+    A zero-OI row contributes nothing and a
+    missing-OI row cannot anchor a minimum,
+    so excluding both is honest and safe."""
+    return df[
+        np.isfinite(df['strike'])
+        & np.isfinite(df['openInterest'])
+    ]
+
+
 def _payout_pain(df, candidate_strikes):
+
+    # Exclude rows that cannot anchor a
+    # minimum BEFORE the payout loop — a
+    # nonfinite-OI row would poison every
+    # pain sum to NaN (see _finite_oi_rows).
+    df = _finite_oi_rows(df)
 
     pains = []
 
@@ -158,7 +184,16 @@ def compute_max_pain(df, spot=None):
     compatibility but does NOT restrict the
     candidate set — use
     compute_max_pain_constrained() for the
-    banded variant and its metadata."""
+    banded variant and its metadata.
+
+    Rows with nonfinite strike or openInterest
+    are excluded first: a missing-OI row cannot
+    anchor a minimum and would otherwise turn
+    every pain sum NaN (np.argmin then picks
+    the lowest strike — the original
+    225/230/235 artifact mechanism)."""
+
+    df = _finite_oi_rows(df)
 
     strikes = sorted(df['strike'].unique())
 
@@ -190,7 +225,25 @@ def compute_max_pain_constrained(df, spot=None):
                           argmin landed exactly
                           on a band edge
                           (distinct from an
-                          empty-band fallback)"""
+                          empty-band fallback)
+      selected_lowest_candidate /
+      selected_highest_candidate
+                        - True when the band
+                          was active and the
+                          argmin selected the
+                          lowest / highest
+                          ELIGIBLE candidate —
+                          catches constraint-
+                          driven edge selection
+                          even when no listed
+                          strike equals the
+                          band edge itself
+
+    Rows with nonfinite strike or openInterest
+    are excluded first (see compute_max_pain):
+    a missing-OI row cannot anchor a minimum."""
+
+    df = _finite_oi_rows(df)
 
     strikes = sorted(df['strike'].unique())
 
@@ -198,6 +251,8 @@ def compute_max_pain_constrained(df, spot=None):
         "candidate_band": None,
         "band_fell_back": False,
         "band_boundary_hit": False,
+        "selected_lowest_candidate": False,
+        "selected_highest_candidate": False,
     }
 
     candidates = strikes
@@ -232,9 +287,24 @@ def compute_max_pain_constrained(df, spot=None):
     if (
         result["candidate_band"] is not None
         and not result["band_fell_back"]
-        and best in result["candidate_band"]
     ):
-        result["band_boundary_hit"] = True
+        # `candidates` is sorted, so [0]/[-1]
+        # are the lowest/highest ELIGIBLE
+        # strikes — the constraint may have
+        # driven the argmin to an endpoint even
+        # when no listed strike literally
+        # equals a band edge.
+        result["selected_lowest_candidate"] = bool(
+            best == candidates[0]
+        )
+        result["selected_highest_candidate"] = bool(
+            best == candidates[-1]
+        )
+
+        # Literal edge equality — a listed
+        # strike exactly on a band edge.
+        if best in result["candidate_band"]:
+            result["band_boundary_hit"] = True
 
     result["max_pain"] = best
 
@@ -804,6 +874,18 @@ def build_ai_packet(
                 ]
             ),
 
+            "max_pain_selected_lowest_candidate": bool(
+                max_pain_constrained[
+                    "selected_lowest_candidate"
+                ]
+            ),
+
+            "max_pain_selected_highest_candidate": bool(
+                max_pain_constrained[
+                    "selected_highest_candidate"
+                ]
+            ),
+
             "gamma_flip": (
                 float(gamma_flip)
                 if gamma_flip
@@ -856,6 +938,14 @@ def build_ai_packet(
                 "IV-derived gamma for these "
                 "strikes is suspect and "
                 "consumers may exclude them. "
+                "Exported open_interest / call_oi / "
+                "put_oi may conflate true-zero OI "
+                "with missing data — the source "
+                "emits NaN openInterest on dead "
+                "strikes and aggregation collapses "
+                "it to 0; rows with missing "
+                "(nonfinite) OI are excluded from "
+                "max-pain payout sums. "
                 "'gamma_flip' is null when "
                 "no material sign crossing exists "
                 "for that expiry."
@@ -902,7 +992,17 @@ def build_ai_packet(
                     "fallback to all strikes; "
                     "'max_pain_band_boundary_hit' "
                     "marks a minimum landing "
-                    "exactly on a band edge."
+                    "exactly on a band edge; "
+                    "'max_pain_selected_lowest_"
+                    "candidate' / 'max_pain_"
+                    "selected_highest_candidate' "
+                    "mark selection of the "
+                    "lowest / highest ELIGIBLE "
+                    "candidate when no listed "
+                    "strike equals a band edge. "
+                    "Rows with missing (nonfinite) "
+                    "openInterest are excluded "
+                    "from all payout sums."
                 )
             }
         },

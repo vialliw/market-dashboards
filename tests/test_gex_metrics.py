@@ -23,6 +23,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from GexDashboard import (
     MIN_MATERIAL_GEX,
@@ -119,6 +120,37 @@ def _material_crossings(df):
         for i in range(1, len(material))
         if material[i - 1][1] < 0 < material[i][1]
     ]
+
+
+def _independent_max_pain(df):
+    """Independent plain-Python max-pain argmin
+    over the finite rows only — a separate
+    implementation used to verify the lib."""
+    frame = df[
+        df["strike"].map(math.isfinite)
+        & df["openInterest"].map(math.isfinite)
+    ]
+
+    best_s = None
+    best_p = None
+
+    for s in sorted(frame["strike"].unique()):
+        pain = 0.0
+        for _, r in frame.iterrows():
+            if r["type"] == "call":
+                pain += (
+                    max(0.0, s - r["strike"])
+                    * r["openInterest"]
+                )
+            else:
+                pain += (
+                    max(0.0, r["strike"] - s)
+                    * r["openInterest"]
+                )
+        if best_p is None or pain < best_p:
+            best_s, best_p = s, pain
+
+    return best_s
 
 
 # =========================
@@ -343,6 +375,21 @@ def test_gamma_flip_nonfinite_strikes_dropped():
     assert compute_gamma_flip(df, spot=SPOT) == 420.0
 
 
+def test_gamma_flip_all_nan_gex_returns_none():
+    """All-NaN gex slice: every row is dropped by
+    the finite filter, so there is no profile at
+    all — the max_abs guard must see an empty
+    slice and return None, not a crash or an
+    artifact strike."""
+    df = pd.DataFrame({
+        "strike": [400.0, 420.0, 440.0],
+        "gex": [np.nan, np.nan, np.nan],
+    })
+
+    assert compute_gamma_flip(df, spot=SPOT) is None
+    assert compute_gamma_flip(df) is None
+
+
 # =========================
 # Max Pain
 # =========================
@@ -465,6 +512,122 @@ def test_max_pain_constrained_boundary_hit():
     assert res["candidate_band"] == [17.5, 32.5]
     assert res["band_fell_back"] is False
     assert res["band_boundary_hit"] is True
+    # a literal edge hit is also the lowest
+    # ELIGIBLE candidate
+    assert res["selected_lowest_candidate"] is True
+    assert res["selected_highest_candidate"] is False
+
+
+def test_max_pain_constrained_between_strikes_edge():
+    """Band endpoints fall BETWEEN listed strikes:
+    no strike literally equals a band edge, so
+    band_boundary_hit must stay False — but the
+    constraint can still drive the argmin to the
+    lowest/highest ELIGIBLE candidate, which the
+    selected_*_candidate flags must report."""
+    df = pd.DataFrame({
+        "strike": [
+            100.0, 150.0, 200.0,
+            100.0, 150.0, 200.0,
+        ],
+        "type": [
+            "call", "call", "call",
+            "put", "put", "put",
+        ],
+        "openInterest": [
+            10, 10000, 10,
+            10, 10, 10,
+        ],
+    })
+
+    # spot=210 -> band [147, 273]; eligible
+    # candidates are 150 and 200, NEITHER of
+    # which is a literal band edge
+    res = compute_max_pain_constrained(df, spot=210.0)
+
+    assert res["candidate_band"] == [147.0, 273.0]
+    # heavy call OI at 150 pins the minimum to
+    # the LOWEST eligible candidate
+    assert res["max_pain"] == 150.0
+    assert res["band_fell_back"] is False
+    assert res["band_boundary_hit"] is False
+    assert res["selected_lowest_candidate"] is True
+    assert res["selected_highest_candidate"] is False
+
+    df2 = df.copy()
+    df2["openInterest"] = [
+        10, 10, 10,
+        10, 10, 90000,
+    ]
+
+    res2 = compute_max_pain_constrained(
+        df2, spot=210.0
+    )
+
+    # heavy put OI at 200 drags the minimum to
+    # the HIGHEST eligible candidate — still
+    # not a literal band edge
+    assert res2["max_pain"] == 200.0
+    assert res2["band_fell_back"] is False
+    assert res2["band_boundary_hit"] is False
+    assert res2["selected_lowest_candidate"] is False
+    assert res2["selected_highest_candidate"] is True
+
+
+def test_max_pain_nan_open_interest_regression():
+    """REGRESSION — original artifact mechanism:
+    the data vendor emits NaN openInterest on dead
+    strikes; a NaN-OI row turns EVERY pain sum
+    NaN and np.argmin silently returns the FIRST
+    NaN index = the lowest strike. This is how
+    the original packet produced max_pain
+    artifacts 225/230/235 on the 10-23 / 10-30 /
+    11-27 expiries. Rows with missing OI (and
+    nonfinite strikes) must be excluded so the
+    argmin reflects only real open interest."""
+    df = pd.DataFrame({
+        "strike": [
+            np.nan, 100.0, 400.0, 420.0, 440.0,
+            100.0, 400.0, 420.0, 440.0,
+        ],
+        "type": [
+            "call", "call", "call", "call", "call",
+            "put", "put", "put", "put",
+        ],
+        "openInterest": [
+            99999, np.nan, 500, 800, 600,
+            np.nan, 700, 300, 900,
+        ],
+    })
+
+    expected = _independent_max_pain(df)
+
+    # independent finite-only argmin is the
+    # interior 420 strike; the OLD code would
+    # have returned the lowest strike (100)
+    # because all-NaN pains -> argmin index 0
+    assert expected == 420.0
+
+    mp = compute_max_pain(df)
+
+    assert mp == expected
+    assert mp != 100.0
+
+    # constrained variant agrees on the same
+    # NaN-poisoned input
+    res = compute_max_pain_constrained(
+        df, spot=420.0
+    )
+    assert res["max_pain"] == expected
+
+    # a fully missing-OI slice has no honest
+    # answer — it fails loudly (ValueError from
+    # the empty candidate set), never an
+    # artifact strike
+    with pytest.raises(ValueError):
+        compute_max_pain(
+            df[df["openInterest"].isna()]
+        )
 
 
 def test_max_pain_backward_compatible_no_spot():
@@ -520,6 +683,17 @@ def test_ai_packet_emits_both_max_pain_variants():
     ]
     assert e["max_pain_band_fell_back"] is False
     assert e["max_pain_band_boundary_hit"] is False
+    # 420 is the lowest ELIGIBLE candidate in
+    # the band — reported by the new flag even
+    # though it is not a literal band edge
+    assert (
+        e["max_pain_selected_lowest_candidate"]
+        is True
+    )
+    assert (
+        e["max_pain_selected_highest_candidate"]
+        is False
+    )
 
 
 # =========================
@@ -602,3 +776,31 @@ def test_meta_metric_definitions_documented():
         in md["max_pain_constrained"].lower()
     )
     assert "materiality_floor" in md
+
+
+def test_meta_data_quality_notes_oi_conflation():
+    """meta.data_quality must document that the
+    exported OI fields may conflate true-zero
+    open interest with missing data (source NaN
+    collapsed to 0 by aggregation) and that
+    missing-OI rows are excluded from max-pain
+    payout sums."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [100.0, 100.0],
+        "type": ["call", "put"],
+        "openInterest": [10, 20],
+        "gex": [1e5, -2e5],
+        "impliedVolatility": [0.30, 0.30],
+        "expiry": [exp_dt] * 2,
+    })
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+
+    dq = packet["meta"]["data_quality"].lower()
+
+    assert "open_interest" in dq
+    assert "conflate" in dq
+    assert "missing" in dq
