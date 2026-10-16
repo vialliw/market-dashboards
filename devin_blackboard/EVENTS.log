@@ -210,3 +210,5 @@ Evidence map:
   }
 ]
 [2026-10-16] B | DONE F3-T1 | true root cause fixed: _finite_oi_rows drops nonfinite strike/OI before payout loop (225/230/235 np.argmin-first-NaN mechanism); new selected_lowest/highest_candidate band-edge flags emitted in packet + metric_definitions; meta.data_quality OI-conflation note; 24 offline tests (was 20), probe reproduces artifacts on zero-as-NaN fixture + verifies independent argmin 450/445/450, clean canonical unchanged; AC 3/3 PASS | files: GexDashboard.py, tests/test_gex_metrics.py, devin_blackboard/probe_f3_t1.py
+
+[2026-10-16T11:05:02.112515+00:00] [CHALLENGER] claimed F3-T2
