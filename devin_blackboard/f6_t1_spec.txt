@@ -1,0 +1,75 @@
+Implement the ChatGPT-APPROVED plan verbatim. The approved plan text follows — it is the binding spec (check_ids, severities, tolerances, eligibility directionality, unperformed semantics, exit codes 0/0/1/2, provenance, no-overwrite rule, independent reference implementations — NEVER import GexDashboard):
+
+# Implementation plan v4: WellnessCheck.py — post-generation AI-packet validator
+
+v4 addresses round-3 concerns with precise specifications. Separate
+script; no GexDashboard.py imports (independent reference implementations);
+blackboard cycle F6 (B→C→D).
+
+## 1. Interface (unchanged)
+
+`python WellnessCheck.py <packet.json> [--snapshot raw.pkl] [--report report.json]`
+Exit codes: 0 PASS / 0 WARN / 1 FAIL / 2 checker-internal error. Every run
+emits a structured report even on FAIL (see §6).
+
+## 2. Check table with exact rules
+
+| check_id | rule | severity |
+|---|---|---|
+| SCHEMA-01 | required fields/types; unique expiry keys; unique strike keys per expiry; schema_version in supported set {1.0} | FAIL |
+| NUMERIC-01 | no NaN/Inf tokens in emitted numerics; spot>0; all OI>=0; ISO expiry dates | FAIL |
+| AVAIL-01a | flag/null consistency: metrics_unavailable:true ⇔ all 7 payout fields null + data_quality reason in {no_finite_oi, insufficient_data}; flag:false ⇔ payout fields non-null | FAIL |
+| AVAIL-01b | **independent eligibility recompute** (production rule: eligible = >=2 distinct strikes having a finite OI row AND total finite OI>0 — note exported OI=0 is ambiguous between true-zero and missing-NaN): verdict is determined per direction — >=2 strikes with exported OI>0 UNAMBIGUOUSLY proves eligible (positive OI can never collapse to 0); the ineligible direction is ambiguous from the packet alone. With --snapshot: reconcile raw rows, exact eligibility + reason code verified (FAIL on mismatch). Without snapshot: flag-verdict emitted as 'unperformed (ambiguous without raw rows)' whenever <2 positive-OI strikes; reason-code check always 'unperformed' without snapshot. Regression fixtures: raw (100,OI=1)/(110,OI=0) vs (100,OI=1)/(110,NaN) — identical exports, opposite eligibility | FAIL / unperformed |
+| AVAIL-01c | **separate nullability**: gamma_flip nullable independent of payout availability (it has its own eligibility path); payout metrics null only under unavailability | FAIL |
+| AGG-01 | per-expiry Σ strike net_gex ≈ expiry net_gex; Σ expiry net_gex ≈ total_net_gex. Tolerance: `abs_err <= max(1e-9, 1e-9*max_magnitude)` — absolute floor 1e-9 covers float64 serialization round-trip error (~1e-15 relative at 1e6 scale is too tight for hand-edited JSON; floor chosen to pass honest rounding, fail real mismatch); tests cover cancellation, rounding, material mismatch | FAIL |
+| MAXPAIN-01 | independent canonical recompute: rows filtered to finite strike & finite OI; candidates = sorted unique strikes; pain(s)=Σ call_OI·max(s−K,0)+put_OI·max(K−s,0); argmin = first-min in ascending order; packet max_pain must equal it (exact float== on identical inputs; also report ties count) | FAIL |
+| MAXPAIN-02 | constrained recompute: payouts computed over the FULL usable chain (all finite-OI strikes K), only the settlement CANDIDATES s restricted to strikes inside [0.7·spot,1.3·spot]; empty band → fell_back:true + all strikes as candidates; boundary_hit ⇔ argmin==band edge exactly; selected_lowest/highest ⇔ argmin==min/max of eligible candidates; all packet flags must match recomputation. Test includes out-of-band OI that moves the constrained minimizer | FAIL |
+| FLIP-01 | independent recompute of the production rule: drop nonfinite strike/gex; group-sum by strike ascending; material iff \|gex\| >= max(0.01·max_abs, 1e-3); whole-slice max_abs<1e-3 → null; crossings = consecutive material strikes where left<0<right; RETURNED VALUE = the upper (positive-side) strike of the crossing pair — NO interpolation, exact comparison; spot present → argmin over |crossing−spot|, equidistant tie → first (lower) crossing; packet gamma_flip must equal this strike exactly or both null | FAIL |
+| IV-01 | stale_iv:true ⇔ raw_implied_volatility>2.0 AND implied_volatility:null; no strike with unflagged IV>2.0 | FAIL |
+| SNAP-01 | when --snapshot supplied: (a) FAIL if snapshot rows cannot be reconciled to packet strikes by (expiry, strike, type) keys — permitted export transforms: NaN→0 collapse of OI, NaN→null IV; any other OI/gex mismatch beyond 1e-6 rel → FAIL; (b) when NOT supplied: checks SNAP-*, and OI-missingness portions of provenance, are emitted as status:"unperformed" with note "no snapshot" — never silently skipped | FAIL / unperformed |
+| COVER-01 | expiries with 0 strikes; sparse chains (<10 strikes); >50% missing-OI share when snapshot given | WARN |
+| FRESH-01 | generated_utc older than 72h (configurable --max-age-hours) | WARN |
+
+## 3. Provenance (unchanged intent, now explicit)
+
+packet_hash (SHA-256 of file bytes), snapshot_hash when supplied,
+packet generated_utc, WellnessCheck.py git commit resolved from the
+checker's OWN source directory (`git -C <dir of WellnessCheck.py>
+rev-parse HEAD`); when the source is not under version control, emit
+code_commit:null + a "not version-controlled" provenance note rather than
+a wrong/absent value, schema_version,
+per-expiry counts {strikes, finite_oi_rows, excluded_rows, stale_iv_rows,
+metrics_unavailable}.
+
+## 4. Failure/edge handling (§6 spec)
+
+- Malformed JSON, unreadable file, unsupported schema_version →
+  structured report `{overall_status:"FAIL", checks:[{check_id:"INPUT-01",
+  status:"FAIL", ...}]}` written if --report path given, exit 1.
+- Checker-internal exception → report `{overall_status:"FAIL",
+  checks:[{check_id:"CHECKER-ERR", status:"FAIL", note:<repr>}]}` +
+  nonzero exit 2; no traceback-only failures.
+- Any check whose inputs are absent → status:"unperformed" (not PASS).
+- Report written to --report path or `validation/<packet>_report_<ts>.json`;
+  artifacts NEVER overwrite the input packet (open output in 'x'-safe mode
+  / distinct filename).
+
+## 5. Tests (offline, tests/test_wellness.py)
+
+- Hand-calculated mini-books: 3-strike book with known argmin computed by
+  hand; flip crossing cases incl. exact-zero gex (non-material), crossing
+  at floor boundary 1e-3, multiple crossings → nearest-spot; constrained
+  boundary-hit vs fell_back vs between-strikes selection.
+- PASS: TSM fixture packet; WARN: stale generated_utc; FAIL-per-check:
+  tampered max_pain/flip/aggregation/IV-provenance/unavailability-flag-on-
+  eligible-chain (AVAIL-01b catches false-unavailable)/false-available-on-
+  degenerate.
+- INPUT-01/CHECKER-ERR paths tested (malformed file, missing file).
+- Snapshot reconciliation: real TSM pickle → PASS + counts; mismatched
+  snapshot (different ticker data) → FAIL.
+
+## 6. Task registration (unchanged)
+
+F6-T1 B executor → F6-T2 C challenger (mutation probes corrupting each
+checked invariant) → F6-T3 D critic (independent re-verification incl.
+hand-computed numbers). CI wiring deferred to a later approved cycle.
