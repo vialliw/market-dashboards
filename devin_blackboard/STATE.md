@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F1-T3 critic gate done by Agent D — PASS; cycle F1 complete)
+Last Updated: 2026-10-16 (F2-T1 done by Agent B — 3/3 AC PASS; F2-T2 ready)
 Current Branch: main
 
 ## Repo
@@ -10,36 +10,63 @@ GexDashboard.py, hourly GitHub Actions → docs/ → GitHub Pages.
 
 ## Current cycle
 
-F1: fix compute_gamma_flip/compute_max_pain artifacts (GitHub issue #1),
-flagged by both sample LLM analyses. CONSTRAINT: market CLOSED during this
-cycle — NO live yfinance calls; tests must use tests/fixtures/TSM_ai_packet.json.
+F2: external ChatGPT review of the issue-#1 fix (cycle F1) returned
+NEEDS_REVISION with 3 blocking concerns — now implemented in F2-T1.
+CONSTRAINT: market CLOSED during this cycle — NO live yfinance calls;
+tests must use tests/fixtures/TSM_ai_packet.json.
 
 ## What's Done
 
-- F1-T1 (B, done): compute_gamma_flip now takes spot=None, applies a 1%-of-
-  max-|gex| materiality filter, returns material neg->pos crossing nearest
-  to spot (ascending scan when spot=None), None when no material crossing.
-  compute_max_pain takes spot=None, restricts candidates to [0.7x,1.3x] spot
-  with all-strikes fallback. build_ai_packet flags stale IV (>200%) strikes
-  with implied_volatility=None + stale_iv:true (OI/GEX kept); data_quality
-  note in meta. tests/test_gex_metrics.py + tests/conftest.py added —
-  11 offline tests on TSM fixture, all 5 ACs PASS. Fixture: 10/16 flip
-  430.0 (was 370), aggregate 430.0, all max_pain inside [295.4, 548.7].
-- F1-T2 (C, done): adversarial review APPROVED. Mutation probe (pre-fix
-  fns vs TSM fixture) confirms tests non-vacuous; nearest-spot correct
-  across multi-crossings; materiality filter cannot empty; band
-  fallback/ties OK; stale_iv preserves OI/GEX; scope audit clean; no
-  network in tests. Minor notes only (np.int64 return type on int-strike
-  df — wrapped by float() in packet path; flip-at-0 truthiness edge;
-  empty-df max_pain ValueError pre-existing). F1-T3 (D) ready.
-- F1-T3 (D, done): critic gate PASS. All 3 ACs re-verified independently
-  (11/11 pytest, import exit 0, no yfinance in tests). Independent probe
-  (temp script, real GexDashboard fns on fixture-rebuilt dfs): 10-16
-  flip=430.0 in [425,435], max_pain=435.0 in [295.435,548.665]; all 7
-  expiries flip 430-475 near spot (artifacts 370/230/250/310 gone); all
-  max_pain 420-475 in-band; far expiry 11-27 flip=475.0 sane. Diff audit
-  fe19b3b..ccd364e clean: only output_files + blackboard touched, zero
-  network calls added, git tree clean. Cycle F1 CLOSED — issue #1 fix
-  verified end-to-end.
+- F1-T1 (B, done): compute_gamma_flip spot-aware materiality filter;
+  compute_max_pain spot band; stale-IV flagging; 11 offline tests.
+- F1-T2 (C, done): adversarial review APPROVED (mutation probes,
+  non-vacuous tests, scope audit clean).
+- F1-T3 (D, done): critic gate PASS. Cycle F1 CLOSED.
+- F2-T1 (B, done): review amendments implemented —
+  (1) compute_gamma_flip: MIN_MATERIAL_GEX=1e-3 absolute floor combined
+      with 1%-of-max relative filter; max_abs < 1e-3 (whole-noise
+      slice) -> None; nonfinite strike/gex rows dropped pre-grouping;
+      zero-gex strikes can never anchor a crossing (floor > 0).
+  (2) compute_max_pain = canonical UNCONSTRAINED argmin (spot param
+      kept for backward compat, no longer restricts); NEW
+      compute_max_pain_constrained returns {max_pain, candidate_band,
+      band_fell_back, band_boundary_hit} — boundary-hit distinguished
+      from empty-band fallback.
+  (3) build_ai_packet per-expiry emits max_pain + max_pain_constrained
+      + max_pain_candidate_band + max_pain_band_fell_back +
+      max_pain_band_boundary_hit; stale strikes emit
+      implied_volatility:null + raw_implied_volatility:<original> +
+      stale_iv:true; meta.data_quality documents retained-with-flag
+      GEX + provenance; meta.metric_definitions documents gamma_flip
+      as strike-profile sign-crossing proxy (call-long/put-short
+      convention, NOT repriced-chain flip), constrained payout
+      minimum, and materiality floor.
+  (4) Dashboard plot draws both lines: "Max Pain" (cyan dot) and
+      "Max Pain (0.7x-1.3x spot band)" (teal dashdot).
+  Tests: tests/test_gex_metrics.py extended 11 -> 20 offline tests
+  (alternating ±1e-12 noise -> None, all-zero -> None, 1e-3 floor
+  boundary below/at/above, relative-only sub-floor block, multi-
+  crossing nearest-spot, nonfinite dropped, unconstrained-outside-
+  band packet fields, boundary-hit vs fell_back, IV provenance,
+  metric_definitions). pytest: 20 passed. Probe
+  devin_blackboard/probe_f2_t1.py: independent payout argmin matches
+  lib on all 7 TSM expiries (unconstrained 435/450/445/460/470/420/450
+  = constrained, all in-band, no fell_back/boundary_hit); alternating
+  noise -> None. ACs: 3/3 PASS. Commit 11c1d52.
 
-None.
+## Ready
+
+- F2-T2 (C): adversarial review of F2 amendments.
+- F2-T3 (D): critic gate for F2 (depends on F2-T2).
+
+## Notes for reviewers
+
+- Semantics change: compute_max_pain(df, spot=X) now IGNORES spot —
+  the banded variant is exclusively compute_max_pain_constrained().
+  Packet field "max_pain" is again the canonical unconstrained value
+  (can land outside the tradable band — honest label).
+- Old fixture packet meta lacks data_quality/metric_definitions
+  (pre-dates the fields); new build_ai_packet output includes them —
+  asserted by tests.
+- Empty-df input to either max_pain fn still raises ValueError
+  (pre-existing, unchanged).
