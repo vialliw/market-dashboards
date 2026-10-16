@@ -1,9 +1,16 @@
 """Offline tests for the issue-#1 fixes in GexDashboard.py:
 
-- compute_gamma_flip: materiality filter + nearest-to-spot
-  crossing + honest None when no material crossing exists.
-- compute_max_pain: +/-30% spot band with all-strikes fallback.
-- build_ai_packet: stale-IV (>200%) flagging on strike objects.
+- compute_gamma_flip: combined materiality filter
+  (max(1% of slice max, MIN_MATERIAL_GEX=1e-3)),
+  nonfinite-strike drop, nearest-to-spot crossing,
+  and honest None when no material crossing exists.
+- compute_max_pain: canonical UNCONSTRAINED payout
+  argmin; compute_max_pain_constrained: the
+  +/-30% spot-band variant with fell_back and
+  boundary_hit metadata.
+- build_ai_packet: stale-IV (>200%) flagging with
+  raw_implied_volatility provenance, both max_pain
+  fields, and meta.metric_definitions.
 
 All tests run OFFLINE against tests/fixtures/TSM_ai_packet.json
 (a real ai_packet produced by this pipeline; spot = 422.05).
@@ -11,14 +18,18 @@ No network access is used anywhere in this file.
 """
 
 import json
+import math
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from GexDashboard import (
+    MIN_MATERIAL_GEX,
     build_ai_packet,
     compute_gamma_flip,
     compute_max_pain,
+    compute_max_pain_constrained,
 )
 
 FIXTURE = (
@@ -76,9 +87,15 @@ def _oi_df(expiry_obj):
 
 def _material_crossings(df):
     """Independent recomputation of material neg->pos
-    crossings (plain Python, separate implementation)."""
+    crossings (plain Python, separate implementation
+    of the combined relative+absolute rule)."""
+    finite = df[
+        df["strike"].map(math.isfinite)
+        & df["gex"].map(math.isfinite)
+    ]
+
     grouped = (
-        df.groupby("strike")["gex"].sum().sort_index()
+        finite.groupby("strike")["gex"].sum().sort_index()
     )
 
     pairs = list(zip(grouped.index, grouped.values))
@@ -86,7 +103,12 @@ def _material_crossings(df):
     if not pairs:
         return []
 
-    floor = 0.01 * max(abs(g) for _, g in pairs)
+    max_abs = max(abs(g) for _, g in pairs)
+
+    if max_abs < MIN_MATERIAL_GEX:
+        return []
+
+    floor = max(0.01 * max_abs, MIN_MATERIAL_GEX)
 
     material = [
         (k, g) for k, g in pairs if abs(g) >= floor
@@ -213,28 +235,147 @@ def test_gamma_flip_nearest_spot_vs_first_crossing():
     assert compute_gamma_flip(df) == 300.0
 
 
+def test_gamma_flip_alternating_noise_returns_none():
+    """Alternating +/-1e-12 sign noise contains
+    real neg->pos crossings but the whole slice is
+    below MIN_MATERIAL_GEX — must return None."""
+    df = pd.DataFrame({
+        "strike": [
+            400.0, 410.0, 420.0,
+            430.0, 440.0, 450.0,
+        ],
+        "gex": [
+            -1e-12, 1e-12, -1e-12,
+            1e-12, -1e-12, 1e-12,
+        ],
+    })
+
+    assert compute_gamma_flip(df, spot=SPOT) is None
+    assert compute_gamma_flip(df) is None
+
+
+def test_gamma_flip_all_zero_book_returns_none():
+    """All-zero gex: no material strikes at all,
+    so zero-gex strikes can never anchor a
+    crossing — honest None."""
+    df = pd.DataFrame({
+        "strike": [400.0, 420.0, 440.0],
+        "gex": [0.0, 0.0, 0.0],
+    })
+
+    assert compute_gamma_flip(df, spot=SPOT) is None
+    assert compute_gamma_flip(df) is None
+
+
+def test_gamma_flip_absolute_floor_boundary():
+    """max_abs just below / at / above the 1e-3
+    floor decides whether the slice counts as
+    noise or signal."""
+    # max_abs = 9e-4 < 1e-3 -> whole slice noise
+    below = pd.DataFrame({
+        "strike": [400.0, 420.0],
+        "gex": [-9e-4, 9e-4],
+    })
+    assert compute_gamma_flip(below, spot=SPOT) is None
+
+    # crossing exactly AT the floor is material
+    at = pd.DataFrame({
+        "strike": [400.0, 420.0],
+        "gex": [-1e-3, 1e-3],
+    })
+    assert (
+        compute_gamma_flip(at, spot=SPOT) == 420.0
+    )
+
+    # just above the floor is material too
+    above = pd.DataFrame({
+        "strike": [400.0, 420.0],
+        "gex": [-1.1e-3, 1.1e-3],
+    })
+    assert (
+        compute_gamma_flip(above, spot=SPOT) == 420.0
+    )
+
+
+def test_gamma_flip_floor_blocks_relative_only_crossing():
+    """A strike above 1%-of-max but below the
+    absolute 1e-3 floor is NOT material — the
+    pure-relative filter would have flipped here."""
+    df = pd.DataFrame({
+        "strike": [400.0, 420.0, 440.0],
+        "gex": [-5e-2, 5e-4, -1e-2],
+    })
+    # 1% of max_abs(0.05) = 5e-4 -> old rule made
+    # the 420 strike material; the 1e-3 floor
+    # rejects it, leaving no neg->pos crossing
+    assert compute_gamma_flip(df, spot=SPOT) is None
+
+
+def test_gamma_flip_multiple_crossings_nearest_spot():
+    """Material crossings both below and above
+    spot: nearest wins."""
+    df = pd.DataFrame({
+        "strike": [400.0, 410.0, 430.0, 445.0],
+        "gex": [-2e6, 1e6, -3e6, 4e6],
+    })
+    # neg->pos crossings at 410 and 445;
+    # 410 is nearer to spot 422.05
+    assert compute_gamma_flip(df, spot=SPOT) == 410.0
+
+
+def test_gamma_flip_nonfinite_strikes_dropped():
+    """NaN/inf strikes and nonfinite gex rows are
+    dropped before grouping — they cannot anchor
+    crossings or poison the materiality max."""
+    df = pd.DataFrame({
+        "strike": [
+            -np.inf, 400.0, 410.0,
+            420.0, 430.0, np.nan,
+        ],
+        "gex": [
+            -9e9, -5e6, -3e6,
+            4e6, np.inf, 1e6,
+        ],
+    })
+
+    # finite profile flips at 420; the -inf strike
+    # (|gex| 9e9) and inf/nan rows are excluded
+    assert compute_gamma_flip(df, spot=SPOT) == 420.0
+
+
 # =========================
 # Max Pain
 # =========================
-def test_max_pain_all_expiries_within_spot_band():
+def test_max_pain_constrained_expiries_within_spot_band():
     packet = _load_packet()
 
     for e in packet["market_snapshot"]["expiries"]:
 
-        mp = compute_max_pain(_oi_df(e), spot=SPOT)
+        res = compute_max_pain_constrained(
+            _oi_df(e), spot=SPOT
+        )
+
+        mp = res["max_pain"]
 
         assert BAND_LO <= mp <= BAND_HI, (
-            f"{e['expiry']}: max_pain {mp} outside "
-            f"[{BAND_LO}, {BAND_HI}]"
+            f"{e['expiry']}: constrained max_pain "
+            f"{mp} outside [{BAND_LO}, {BAND_HI}]"
         )
 
         chain = {s["strike"] for s in e["strikes"]}
         assert mp in chain
 
+        assert res["candidate_band"] == [
+            BAND_LO, BAND_HI
+        ]
+        assert res["band_fell_back"] is False
 
-def test_max_pain_band_excludes_far_otm_drag():
-    """Massive deep-OTM call OI must not drag max pain
-    far below spot once the band is applied."""
+
+def test_max_pain_unconstrained_is_canonical():
+    """compute_max_pain returns the canonical
+    UNCONSTRAINED argmin — even when that lands
+    outside the tradable band (honest label, not
+    silently constrained)."""
     df = pd.DataFrame({
         "strike": [
             200.0, 420.0, 430.0,
@@ -250,19 +391,26 @@ def test_max_pain_band_excludes_far_otm_drag():
         ],
     })
 
-    unbounded = compute_max_pain(df)
-    banded = compute_max_pain(df, spot=SPOT)
+    # canonical unconstrained is dragged to the
+    # 200 strike by the massive deep-OTM call OI
+    assert compute_max_pain(df) == 200.0
+    # `spot` no longer constrains the canonical fn
+    assert compute_max_pain(df, spot=SPOT) == 200.0
 
-    # unbounded is dragged to the 200 artifact strike
-    assert unbounded == 200.0
-    # banded result stays inside the spot band
-    assert banded == 420.0
-    assert BAND_LO <= banded <= BAND_HI
+    res = compute_max_pain_constrained(df, spot=SPOT)
+
+    # constrained variant stays inside the band
+    assert res["max_pain"] == 420.0
+    assert BAND_LO <= res["max_pain"] <= BAND_HI
+    assert res["candidate_band"] == [BAND_LO, BAND_HI]
+    assert res["band_fell_back"] is False
+    assert res["band_boundary_hit"] is False
 
 
-def test_max_pain_band_fallback_when_empty():
-    """If the spot band contains no strikes, fall back
-    to the full chain (same as spot=None)."""
+def test_max_pain_constrained_empty_band_falls_back():
+    """If the spot band contains no strikes, fall
+    back to the full chain — flagged as fell_back,
+    distinct from a boundary hit."""
     df = pd.DataFrame({
         "strike": [
             100.0, 200.0, 300.0,
@@ -279,11 +427,44 @@ def test_max_pain_band_fallback_when_empty():
     })
 
     # band [700, 1300] contains no strikes -> fallback
-    banded = compute_max_pain(df, spot=1000.0)
-    unbounded = compute_max_pain(df)
+    res = compute_max_pain_constrained(df, spot=1000.0)
 
-    assert banded == unbounded
-    assert banded in {100.0, 200.0, 300.0}
+    assert res["candidate_band"] == [700.0, 1300.0]
+    assert res["band_fell_back"] is True
+    assert res["band_boundary_hit"] is False
+    assert res["max_pain"] == compute_max_pain(df)
+    assert res["max_pain"] in {100.0, 200.0, 300.0}
+
+
+def test_max_pain_constrained_boundary_hit():
+    """Band active and the payout argmin lands
+    exactly on a band edge -> boundary_hit=True,
+    NOT fell_back. 0.7*25 == 17.5 and
+    1.3*25 == 32.5 exactly in binary fp, so the
+    band edges coincide with real strikes."""
+    df = pd.DataFrame({
+        "strike": [
+            17.5, 20.0, 30.0, 32.5,
+            17.5, 20.0, 30.0, 32.5,
+        ],
+        "type": [
+            "call", "call", "call", "call",
+            "put", "put", "put", "put",
+        ],
+        "openInterest": [
+            10000, 10, 10, 10,
+            5, 5, 5, 5,
+        ],
+    })
+
+    res = compute_max_pain_constrained(df, spot=25.0)
+
+    # heavy call OI at 17.5 pins the payout
+    # minimum to the lower band edge
+    assert res["max_pain"] == 17.5
+    assert res["candidate_band"] == [17.5, 32.5]
+    assert res["band_fell_back"] is False
+    assert res["band_boundary_hit"] is True
 
 
 def test_max_pain_backward_compatible_no_spot():
@@ -294,6 +475,51 @@ def test_max_pain_backward_compatible_no_spot():
 
     chain = {s["strike"] for s in e["strikes"]}
     assert mp in chain
+
+
+def test_ai_packet_emits_both_max_pain_variants():
+    """Packet must emit unconstrained 'max_pain'
+    AND the separately labeled constrained variant
+    with band metadata — even when the canonical
+    value sits outside the band."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [
+            200.0, 420.0, 430.0,
+            200.0, 420.0, 430.0,
+        ],
+        "type": [
+            "call", "call", "call",
+            "put", "put", "put",
+        ],
+        "openInterest": [
+            100000, 100, 50,
+            10, 10, 10,
+        ],
+        "gex": [
+            1e5, 2e5, 1e5,
+            -1e5, -2e5, -1e5,
+        ],
+        "impliedVolatility": [0.30] * 6,
+        "expiry": [exp_dt] * 6,
+    })
+
+    packet = build_ai_packet("TEST", df, 422.05, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    # canonical unconstrained value — honestly
+    # outside the band
+    assert e["max_pain"] == 200.0
+
+    # constrained variant, separately labeled
+    assert e["max_pain_constrained"] == 420.0
+    assert e["max_pain_candidate_band"] == [
+        0.7 * 422.05, 1.3 * 422.05
+    ]
+    assert e["max_pain_band_fell_back"] is False
+    assert e["max_pain_band_boundary_hit"] is False
 
 
 # =========================
@@ -322,6 +548,8 @@ def test_stale_iv_flagged_in_ai_packet():
     stale = by_strike[110.0]
     assert stale["implied_volatility"] is None
     assert stale["stale_iv"] is True
+    # flagged quote kept for provenance
+    assert stale["raw_implied_volatility"] == 3.5
     # OI / GEX fields must be preserved
     assert stale["open_interest"] == 70
     assert stale["call_oi"] == 30
@@ -331,6 +559,46 @@ def test_stale_iv_flagged_in_ai_packet():
     normal = by_strike[100.0]
     assert normal["implied_volatility"] == 0.30
     assert normal.get("stale_iv") is not True
+    # provenance key only exists on stale strikes
+    assert "raw_implied_volatility" not in normal
 
     # flag is documented in the packet
     assert "stale_iv" in packet["meta"]["data_quality"]
+    assert (
+        "raw_implied_volatility"
+        in packet["meta"]["data_quality"]
+    )
+
+
+def test_meta_metric_definitions_documented():
+    """meta.metric_definitions must honestly label
+    gamma_flip as a strike-profile proxy (not a
+    repriced-chain flip) and max_pain_constrained
+    as a constrained payout minimum."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [100.0, 100.0],
+        "type": ["call", "put"],
+        "openInterest": [10, 20],
+        "gex": [1e5, -2e5],
+        "impliedVolatility": [0.30, 0.30],
+        "expiry": [exp_dt] * 2,
+    })
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+
+    md = packet["meta"]["metric_definitions"]
+
+    assert "gamma_flip" in md
+    assert (
+        "strike-profile" in md["gamma_flip"].lower()
+    )
+    assert "max_pain" in md
+    assert "max_pain_constrained" in md
+    assert (
+        "constrained payout minimum"
+        in md["max_pain_constrained"].lower()
+    )
+    assert "materiality_floor" in md

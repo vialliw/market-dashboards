@@ -127,7 +127,7 @@
     "id": "F2-T1",
     "title": "Implement review amendments: absolute materiality floor, labeled constrained max_pain, IV/GEX provenance, extended tests",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F1-T3"
     ],
@@ -159,8 +159,9 @@
       {
         "id": "AC-3",
         "check": "probe",
-        "command": "offline probe on TSM fixture",
-        "expected": "per-expiry unconstrained max_pain computed independently; constrained variant labeled; alternating-noise df returns None"
+        "command": "python devin_blackboard/probe_f2_t1.py",
+        "expected": "per-expiry unconstrained max_pain computed independently; constrained variant labeled; alternating-noise df returns None",
+        "expected_exit": 0
       }
     ],
     "result": null

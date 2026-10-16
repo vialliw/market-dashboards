@@ -109,3 +109,34 @@ Evidence map:
 [2026-10-16] D | DONE F1-T3 | critic gate PASS: 3/3 ACs re-verified (11/11 pytest, import ok, no yfinance in tests); independent probe flip=430.0 in [425,435] + max_pain=435.0 in [295.435,548.665] on 10-16 expiry, all 7 expiries sane; diff audit clean, tree clean | files: none (verification only)
 
 [2026-10-16T10:38:27.725535+00:00] [EXECUTOR] claimed F2-T1
+[2026-10-16T10:43:04.685776+00:00] [EXECUTOR] completed F2-T1 -> F2 amendments implemented. (1) compute_gamma_flip: MIN_MATERIAL_GEX=1e-3 absolute floor combined with 1%-of-max; nonfinite strike/gex rows dropped pre-grouping; whole-noise slice (max_abs<1e-3) -> None; zero-gex can never anchor (floor>0). (2) compute_max_pain now canonical UNCONSTRAINED argmin (spot kept for compat, unused); new compute_max_pain_constrained returns {max_pain, candidate_band, band_fell_back, band_boundary_hit} - boundary-hit vs empty-band fallback distinguished. (3) build_ai_packet emits max_pain + max_pain_constrained + candidate_band + fell_back + boundary_hit per expiry; stale strikes get implied_volatility:null + raw_implied_volatility:<orig> + stale_iv:true; meta.data_quality documents retained-with-flag GEX; meta.metric_definitions documents gamma_flip strike-profile proxy (call-long/put-short, not repriced-chain flip) + constrained payout minimum + materiality floor. (4) Dashboard plot draws both lines labeled. Tests: 20 offline tests (was 11), all fixture/synthetic, no network. pytest: 20 passed. Probe: all 7 TSM expiries unconstrained argmin independently verified (435/450/445/460/470/420/450), constrained matches banded argmin, alternating +/-1e-12 noise -> None. AC: 3/3 PASS.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "....................                                                     [100%]\n20 passed in 4.50s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  },
+  {
+    "id": "AC-3",
+    "check": "probe",
+    "command": "python devin_blackboard/probe_f2_t1.py",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "470.0 (indep 470.0) constrained=470.0 (indep 470.0) band=[295.4349914550781, 548.6649841308594] fell_back=False boundary_hit=False -> PASS\n2026-11-20: uncon=420.0 (indep 420.0) constrained=420.0 (indep 420.0) band=[295.4349914550781, 548.6649841308594] fell_back=False boundary_hit=False -> PASS\n2026-11-27: uncon=450.0 (indep 450.0) constrained=450.0 (indep 450.0) band=[295.4349914550781, 548.6649841308594] fell_back=False boundary_hit=False -> PASS\nalternating-noise flip = None -> PASS\nALL PASS\n"
+  }
+]

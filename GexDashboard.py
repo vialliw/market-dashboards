@@ -116,22 +116,7 @@ def compute_gex(df, spot, r=0.01):
 # =========================
 # Max Pain
 # =========================
-def compute_max_pain(df, spot=None):
-
-    strikes = sorted(df['strike'].unique())
-
-    if spot is not None:
-
-        bounded = [
-            s
-            for s in strikes
-            if 0.7 * spot <= s <= 1.3 * spot
-        ]
-
-        # Fall back to all strikes if the
-        # spot band empties the candidate set.
-        if bounded:
-            strikes = bounded
+def _payout_pain(df, candidate_strikes):
 
     pains = []
 
@@ -139,7 +124,7 @@ def compute_max_pain(df, spot=None):
     # total pain at every candidate strike over
     # all option rows; kept as the existing
     # O(strikes x rows) loop for readability.
-    for s in strikes:
+    for s in candidate_strikes:
 
         pain = 0
 
@@ -161,13 +146,123 @@ def compute_max_pain(df, spot=None):
 
         pains.append(pain)
 
-    return strikes[np.argmin(pains)]
+    return pains
+
+
+def compute_max_pain(df, spot=None):
+    """Canonical max pain: the UNCONSTRAINED
+    strike that minimizes total option payout
+    across all strikes in the chain.
+
+    `spot` is accepted for backward
+    compatibility but does NOT restrict the
+    candidate set — use
+    compute_max_pain_constrained() for the
+    banded variant and its metadata."""
+
+    strikes = sorted(df['strike'].unique())
+
+    pains = _payout_pain(df, strikes)
+
+    return strikes[int(np.argmin(pains))]
+
+
+def compute_max_pain_constrained(df, spot=None):
+    """Constrained max-pain variant: the payout
+    minimum restricted to strikes inside
+    [0.7*spot, 1.3*spot]. This is a constrained
+    payout minimum, NOT a 'nearest-to-spot'
+    metric.
+
+    Returns a dict with the constrained argmin
+    plus honest band metadata:
+
+      max_pain          - constrained payout
+                          minimum strike
+      candidate_band    - [0.7*spot, 1.3*spot],
+                          or None when spot=None
+      band_fell_back    - True when the band
+                          emptied the candidate
+                          set and ALL strikes
+                          were used instead
+      band_boundary_hit - True when the band
+                          was active and the
+                          argmin landed exactly
+                          on a band edge
+                          (distinct from an
+                          empty-band fallback)"""
+
+    strikes = sorted(df['strike'].unique())
+
+    result = {
+        "candidate_band": None,
+        "band_fell_back": False,
+        "band_boundary_hit": False,
+    }
+
+    candidates = strikes
+
+    if spot is not None:
+
+        band = [0.7 * spot, 1.3 * spot]
+
+        result["candidate_band"] = band
+
+        bounded = [
+            s
+            for s in strikes
+            if band[0] <= s <= band[1]
+        ]
+
+        if bounded:
+
+            candidates = bounded
+
+        else:
+
+            # Fall back to all strikes if the
+            # spot band empties the candidate
+            # set.
+            result["band_fell_back"] = True
+
+    pains = _payout_pain(df, candidates)
+
+    best = candidates[int(np.argmin(pains))]
+
+    if (
+        result["candidate_band"] is not None
+        and not result["band_fell_back"]
+        and best in result["candidate_band"]
+    ):
+        result["band_boundary_hit"] = True
+
+    result["max_pain"] = best
+
+    return result
 
 
 # =========================
 # Gamma Flip
 # =========================
+
+# Absolute materiality floor. gex units are
+# dollar-gamma in $M per 1% move
+# (gamma * OI * 100 * spot^2 / 1e8), so 1e-3
+# is roughly $1k of notional gamma — a slice
+# whose entire |gex| profile is below this is
+# numerical noise, not signal.
+MIN_MATERIAL_GEX = 1e-3
+
+
 def compute_gamma_flip(df, spot=None):
+
+    # Drop rows with nonfinite strike or gex so
+    # NaN/inf artifacts cannot anchor a crossing
+    # or poison the grouped profile.
+    df = df[
+        np.isfinite(df['strike'])
+        & np.isfinite(df['gex'])
+    ]
 
     grouped = (
         df.groupby('strike')['gex']
@@ -181,14 +276,21 @@ def compute_gamma_flip(df, spot=None):
     if len(gex_vals) == 0:
         return None
 
-    # Materiality filter: deep-OTM strikes carry
-    # noise-level gex from stale quotes, so ignore
-    # any strike whose |gex| is below 1% of the
-    # max |gex| in this df. The max-|gex| strike
-    # itself always survives, so the filter can
-    # never empty the set.
-    materiality = (
-        0.01 * np.abs(gex_vals).max()
+    max_abs = np.abs(gex_vals).max()
+
+    # The whole slice is numerical noise — there
+    # is no honest flip here.
+    if max_abs < MIN_MATERIAL_GEX:
+        return None
+
+    # Materiality filter: a strike is material
+    # iff its |gex| clears BOTH 1% of the slice
+    # max AND the absolute floor (~$1k notional
+    # gamma). Zero-gex strikes can never be
+    # material, so they never anchor a crossing.
+    materiality = max(
+        0.01 * max_abs,
+        MIN_MATERIAL_GEX
     )
 
     material = (
@@ -572,9 +674,13 @@ def build_ai_packet(
             else "-Gamma"
         )
 
-        max_pain = compute_max_pain(
-            sub,
-            spot=spot
+        max_pain = compute_max_pain(sub)
+
+        max_pain_constrained = (
+            compute_max_pain_constrained(
+                sub,
+                spot=spot
+            )
         )
 
         gamma_flip = compute_gamma_flip(
@@ -656,6 +762,10 @@ def build_ai_packet(
 
             if stale_iv:
                 strike_obj["stale_iv"] = True
+                # Keep the flagged quote for
+                # provenance — consumers may
+                # audit or exclude these rows.
+                strike_obj["raw_implied_volatility"] = iv
 
             strike_objects.append(strike_obj)
 
@@ -668,6 +778,31 @@ def build_ai_packet(
             "gamma_regime": gamma_regime,
 
             "max_pain": float(max_pain),
+
+            "max_pain_constrained": float(
+                max_pain_constrained["max_pain"]
+            ),
+
+            "max_pain_candidate_band": [
+                float(b)
+                for b in (
+                    max_pain_constrained[
+                        "candidate_band"
+                    ]
+                )
+            ],
+
+            "max_pain_band_fell_back": bool(
+                max_pain_constrained[
+                    "band_fell_back"
+                ]
+            ),
+
+            "max_pain_band_boundary_hit": bool(
+                max_pain_constrained[
+                    "band_boundary_hit"
+                ]
+            ),
 
             "gamma_flip": (
                 float(gamma_flip)
@@ -713,12 +848,63 @@ def build_ai_packet(
             "data_quality": (
                 "Strikes flagged 'stale_iv': true "
                 "had stale implied_volatility "
-                "(>200%) replaced with null; "
-                "their OI and GEX fields remain "
-                "valid. 'gamma_flip' is null when "
+                "(>200%) replaced with null; the "
+                "original quote is preserved in "
+                "'raw_implied_volatility' for "
+                "provenance. Their OI and GEX "
+                "fields are retained-with-flag — "
+                "IV-derived gamma for these "
+                "strikes is suspect and "
+                "consumers may exclude them. "
+                "'gamma_flip' is null when "
                 "no material sign crossing exists "
                 "for that expiry."
-            )
+            ),
+
+            "metric_definitions": {
+
+                "gamma_flip": (
+                    "Strike-profile proxy at the "
+                    "current spot: the material "
+                    "negative->positive net-gex "
+                    "sign crossing nearest spot "
+                    "under a modeled "
+                    "call-long/put-short dealer "
+                    "convention. It is NOT a "
+                    "repriced-chain zero-gamma "
+                    "flip."
+                ),
+
+                "materiality_floor": (
+                    "A strike's gex is material "
+                    "iff |gex| >= max(1% of the "
+                    "slice's max |gex|, 1e-3 "
+                    "$M-per-1% ~= $1k notional "
+                    "gamma). Sub-floor slices "
+                    "return gamma_flip = null."
+                ),
+
+                "max_pain": (
+                    "Canonical UNCONSTRAINED max "
+                    "pain: the strike minimizing "
+                    "total option payout across "
+                    "all strikes in the chain."
+                ),
+
+                "max_pain_constrained": (
+                    "Constrained payout minimum: "
+                    "the payout argmin restricted "
+                    "to 'max_pain_candidate_band' "
+                    "([0.7*spot, 1.3*spot]) — NOT "
+                    "a 'nearest-to-spot' metric. "
+                    "'max_pain_band_fell_back' "
+                    "marks the empty-band "
+                    "fallback to all strikes; "
+                    "'max_pain_band_boundary_hit' "
+                    "marks a minimum landing "
+                    "exactly on a band edge."
+                )
+            }
         },
 
         "system_prompt": (
@@ -965,6 +1151,7 @@ def plot_gex_dashboard(
         "put_wall": True,
         "gamma_flip": True,
         "max_pain": True,
+        "max_pain_constrained": True,
         "spot": True
     }
 
@@ -990,9 +1177,13 @@ def plot_gex_dashboard(
             .reset_index()
         )
 
-        max_pain = compute_max_pain(
-            sub,
-            spot=spot
+        max_pain = compute_max_pain(sub)
+
+        max_pain_constrained = (
+            compute_max_pain_constrained(
+                sub,
+                spot=spot
+            )["max_pain"]
         )
 
         gamma_flip = compute_gamma_flip(
@@ -1126,10 +1317,22 @@ def plot_gex_dashboard(
         # =========================
         # Max Pain
         # =========================
+        # Canonical unconstrained max pain.
         fig.add_vline(
             x=max_pain,
             line_color="cyan",
             line_dash="dot",
+            row=i,
+            col=1
+        )
+
+        # Separately labeled constrained variant
+        # (payout minimum inside the
+        # 0.7x-1.3x spot band).
+        fig.add_vline(
+            x=max_pain_constrained,
+            line_color="teal",
+            line_dash="dashdot",
             row=i,
             col=1
         )
@@ -1152,6 +1355,28 @@ def plot_gex_dashboard(
             )
 
             legend_flags["max_pain"] = False
+
+        if legend_flags["max_pain_constrained"]:
+
+            fig.add_trace(
+                go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode="lines",
+                    line=dict(
+                        color="teal",
+                        dash="dashdot"
+                    ),
+                    name=(
+                        "Max Pain "
+                        "(0.7x-1.3x spot band)"
+                    )
+                ),
+                row=i,
+                col=1
+            )
+
+            legend_flags["max_pain_constrained"] = False
 
         # =========================
         # Gamma Flip
