@@ -1,0 +1,121 @@
+[
+  {
+    "id": "F1-T1",
+    "title": "Fix gamma_flip/max_pain artifacts + stale-IV hygiene in GexDashboard.py (issue #1)",
+    "role": "executor",
+    "status": "todo",
+    "depends_on": [],
+    "assigned_to": "B",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "AGENTS.md"
+    ],
+    "output_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/conftest.py",
+      "tests/fixtures/*"
+    ],
+    "scope": "Fix repo issue #1. Bug evidence (TSM packet 2026-10-15, spot 422.05, total net GEX -52.6M): market_snapshot.nearest_gamma_flip=430 (correct — aggregated strike data crosses sign at 430) but per-expiry gamma_flip values are 370/230/250/310 (artifacts), and several max_pain values are 225-235 (far from tradable range). Deep-wing strikes carry stale impliedVolatility of 300-450%.\n\nROOT CAUSES:\n- compute_gamma_flip(df) scans strikes ascending and returns the FIRST negative->positive gex crossing. Deep-OTM strikes have noise-level gex (~1e-12) from stale quotes, so the 'flip' lands on a meaningless strike.\n- compute_max_pain(df) evaluates ALL strikes unbounded — massive far-OTM put OI (e.g. 10,640 @ 270) drags the result far below spot.\n- Stale wing IVs pass into the ai_packet strikes unflagged.\n\nREQUIRED CHANGES (GexDashboard.py):\n1. compute_gamma_flip: add optional `spot` param (keep signature backward-compatible: compute_gamma_flip(df, spot=None)). Ignore strikes whose |gex| is below a materiality threshold (suggest: < 1% of max |gex| in that df). Among remaining sign crossings, return the crossing NEAREST TO SPOT when spot is provided; if spot is None, keep the ascending-scan behavior but still apply the materiality filter. If no material crossing exists, return None (honest) — never return an artifact strike. Update call sites (compute_gamma_flip(df) and compute_gamma_flip(sub) in build_ai_packet) to pass spot.\n2. compute_max_pain: add optional `spot` param the same way. When spot is provided, restrict candidate strikes to [0.7*spot, 1.3*spot]; if that filter empties the candidate set, fall back to all strikes. Update call sites to pass spot.\n3. In build_ai_packet strike_objects: strikes with implied_volatility > 2.0 (200%, stale quote) must keep OI/GEX fields but get implied_volatility replaced by None and a 'stale_iv': true flag added; normal strikes keep their value. Document the flag in the packet (e.g. a data_quality note in meta or instructions).\n4. tests/test_gex_metrics.py (new): must run OFFLINE — no yfinance/network imports. Reconstruct per-expiry DataFrames from tests/fixtures/TSM_ai_packet.json (each strike entry -> a row; for compute_gamma_flip a df with columns strike+gex suffices since gex is precomputed per strike; for compute_max_pain reconstruct call/put rows from call_oi/put_oi). REQUIRED assertions: (a) expiry 2026-10-16 flip in [425.0, 435.0]; (b) expiries with no material sign crossing return None (not an artifact strike); (c) every expiry max_pain within [0.7*422.05, 1.3*422.05]; (d) aggregated whole-book flip in [425.0, 435.0]; (e) synthetic edge cases: empty df -> None, all-negative -> None, all-positive -> None; (f) stale IV flagging on a synthetic strike with iv=3.5.\n5. NO yfinance, network, or full-script runs anywhere in implementation or tests — market is closed and live fetches return bad data.\n6. Keep code style consistent with the file (verbose spaced style is fine; do not reformat unrelated code). Do NOT touch VolumeProfileVisualizer.py, docs/, .github/, README.md.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "module_imports",
+        "command": "python -c \"import GexDashboard\"",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-2",
+        "check": "pytest_full_suite",
+        "command": "python -m pytest tests/ -q",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-3",
+        "check": "gamma_flip_tests",
+        "command": "python -m pytest tests/test_gex_metrics.py -k flip -q",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-4",
+        "check": "max_pain_tests",
+        "command": "python -m pytest tests/test_gex_metrics.py -k max_pain -q",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-5",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      }
+    ]
+  },
+  {
+    "id": "F1-T2",
+    "title": "Challenger: adversarial review of F1-T1 gamma_flip/max_pain fix",
+    "role": "challenger",
+    "status": "todo",
+    "depends_on": ["F1-T1"],
+    "assigned_to": "C",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "devin_blackboard/EVENTS.log"
+    ],
+    "output_files": [],
+    "scope": "Adversarially review the F1-T1 diff (git show the commits since the cycle start). Verify: (1) the materiality filter cannot zero out ALL strikes and silently keep old behavior; (2) flip-nearest-spot logic is correct when multiple crossings exist above and below spot (TSM data has sign noise at 430/435/442.5/445); (3) None vs artifact semantics; (4) max_pain band fallback when filtered set is empty; (5) tests actually assert (not vacuous — try mutating the fix e.g. revert the materiality filter in a temp copy and confirm a test FAILS); (6) no yfinance/network use in tests; (7) scope audit — no files outside output_files changed; (8) stale-IV flag does not drop OI/GEX data. Return APPROVED or NEEDS-WORK with findings list. Do NOT edit source/tests.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest_full_suite",
+        "command": "python -m pytest tests/ -q",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-2",
+        "check": "module_imports",
+        "command": "python -c \"import GexDashboard\"",
+        "expected_exit": 0
+      }
+    ]
+  },
+  {
+    "id": "F1-T3",
+    "title": "Critic: final verification gate for issue #1 fix",
+    "role": "critic",
+    "status": "todo",
+    "depends_on": ["F1-T1", "F1-T2"],
+    "assigned_to": "D",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/",
+      "tests/fixtures/TSM_ai_packet.json",
+      "devin_blackboard/EVENTS.log",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [],
+    "scope": "Final gate for F1-T1. Independently re-run EVERY acceptance criterion with concrete evidence (pytest output, file:line citations). Additionally: write your OWN offline probe (temp script in %TEMP%) that reconstructs the TSM 10/16 expiry df from tests/fixtures/TSM_ai_packet.json and calls the real compute_gamma_flip + compute_max_pain — confirm flip lands near 430 (in [425,435]) and max_pain lands in the +/-30% spot band. Confirm no live network calls were introduced (git diff review). Confirm git tree is clean. Verdict: PASS or FAIL with evidence.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest_full_suite",
+        "command": "python -m pytest tests/ -q",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-2",
+        "check": "module_imports",
+        "command": "python -c \"import GexDashboard\"",
+        "expected_exit": 0
+      },
+      {
+        "id": "AC-3",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      }
+    ]
+  }
+]
