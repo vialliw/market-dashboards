@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F1-T2 review done by Agent C — APPROVED)
+Last Updated: 2026-10-16 (F1-T3 critic gate done by Agent D — PASS; cycle F1 complete)
 Current Branch: main
 
 ## Repo
@@ -32,5 +32,14 @@ cycle — NO live yfinance calls; tests must use tests/fixtures/TSM_ai_packet.js
   network in tests. Minor notes only (np.int64 return type on int-strike
   df — wrapped by float() in packet path; flip-at-0 truthiness edge;
   empty-df max_pain ValueError pre-existing). F1-T3 (D) ready.
+- F1-T3 (D, done): critic gate PASS. All 3 ACs re-verified independently
+  (11/11 pytest, import exit 0, no yfinance in tests). Independent probe
+  (temp script, real GexDashboard fns on fixture-rebuilt dfs): 10-16
+  flip=430.0 in [425,435], max_pain=435.0 in [295.435,548.665]; all 7
+  expiries flip 430-475 near spot (artifacts 370/230/250/310 gone); all
+  max_pain 420-475 in-band; far expiry 11-27 flip=475.0 sane. Diff audit
+  fe19b3b..ccd364e clean: only output_files + blackboard touched, zero
+  network calls added, git tree clean. Cycle F1 CLOSED — issue #1 fix
+  verified end-to-end.
 
 None.

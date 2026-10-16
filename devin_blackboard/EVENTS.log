@@ -106,3 +106,4 @@ Evidence map:
     "output": ""
   }
 ]
+[2026-10-16] D | DONE F1-T3 | critic gate PASS: 3/3 ACs re-verified (11/11 pytest, import ok, no yfinance in tests); independent probe flip=430.0 in [425,435] + max_pain=435.0 in [295.435,548.665] on 10-16 expiry, all 7 expiries sane; diff audit clean, tree clean | files: none (verification only)
