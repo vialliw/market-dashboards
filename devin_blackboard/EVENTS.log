@@ -228,3 +228,5 @@ Evidence map:
   }
 ]
 [2026-10-16] C | DONE F3-T2 | APPROVED. probe_f3_t2.py 40/40 checks PASS: clean-data A/B vs pre-F3 commit identical on all 7 TSM expiries; one-sided NaN drops only that row; NaN-strike/inf-OI excluded; all-NaN/empty -> loud ValueError; tie -> lowest strike; band-edge flags correct (driven lowest/highest between strikes, literal edge -> boundary_hit+selected, fell_back/None/NaN-spot suppressed, coincidental endpoint literal); gamma_flip gex filter covers NaN path; 4 mutants caught (finite-filter revert -> artifact 225 + regression test fails, payout-only-filter -> NaN hijack, flag-swap, fell_back guard); packet emits bool flags + conflation note verified; pytest 24/24; diff scope clean; zero network | files: devin_blackboard/probe_f3_t2.py, devin_blackboard/STATE.md, devin_blackboard/EVENTS.log
+
+[2026-10-16T11:15:04.792271+00:00] [CRITIC] claimed F3-T3
