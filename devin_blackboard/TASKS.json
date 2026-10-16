@@ -500,7 +500,7 @@
     "id": "F6-T1",
     "title": "Implement WellnessCheck.py + tests per approved plan",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F5-T3"
     ],
@@ -532,7 +532,7 @@
       {
         "id": "AC-3",
         "check": "cli",
-        "command": "python WellnessCheck.py tests\fixtures\\TSM_ai_packet.json",
+        "command": "python WellnessCheck.py tests/fixtures/TSM_ai_packet.json",
         "expected_exit": 0
       }
     ],

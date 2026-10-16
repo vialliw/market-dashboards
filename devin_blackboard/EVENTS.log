@@ -372,3 +372,34 @@ Evidence map:
   }
 ]
 [2026-10-16T16:29:11.412257+00:00] [EXECUTOR] claimed F6-T1
+[2026-10-16T16:50:56.713662+00:00] [EXECUTOR] completed F6-T1 -> WellnessCheck.py implemented per approved plan: independent plain-Python reference impls (never imports GexDashboard); checks SCHEMA-01/NUMERIC-01/AVAIL-01a/01b(directionality:>=2 exported positive-OI strikes proves eligible, else unperformed-ambiguous w/o snapshot; raw-row eligibility+reason verified w/ snapshot)/01c/AGG-01(1e-9 tol)/MAXPAIN-01(canonical argmin+ties)/MAXPAIN-02(band/flags)/FLIP-01(material neg->pos crossing, upper strike, nearest-spot)/IV-01(stale_iv biconditional+unflagged>2.0)/SNAP-01((expiry,strike,type) reconcile, NaN->0 OI + NaN->null IV permitted, 1e-6 rel gex; unperformed w/o snapshot)/COVER-01/FRESH-01(WARN); INPUT-01/CHECKER-ERR; provenance packet_hash+snapshot_hash+code_commit+per-expiry counts; exit 0/0/1/2; report never overwrites input. Fixtures regenerated OFFLINE (no network): TSM_ai_packet.json rebuilt from reconstructed chain preserving all original values + F2-F5 fields; TSM_snapshot.pkl reconciling chain; TSM_raw_* pair replayed from _prefix_run raw snapshot (real NaN-OI rows). tests/test_wellness.py: 41 tests (hand-calc mini-books, flip floor/zero/multi-crossing, boundary/fell_back/between-strikes, PASS/WARN/FAIL-per-check, ambiguity+snapshot resolution, INPUT-01/CHECKER-ERR, no-overwrite). pytest 74/74; findstr yfinance tests: no match; CLI on fixture exit 0 PASS. AC 3/3. NOTE: fixed JSON-escaping bug in stored AC-3 command (formfeed \f in path -> forward slashes).
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "........................................................................ [ 97%]\n..                                                                       [100%]\n74 passed in 11.13s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  },
+  {
+    "id": "AC-3",
+    "check": "cli",
+    "command": "python WellnessCheck.py tests/fixtures/TSM_ai_packet.json",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "overall_status: PASS\n  SCHEMA-01    PASS\n  NUMERIC-01   PASS\n  SNAP-01      unperformed\n  AVAIL-01a    PASS\n  AVAIL-01b    PASS\n  AVAIL-01c    PASS\n  AGG-01       PASS\n  MAXPAIN-01   PASS\n  MAXPAIN-02   PASS\n  FLIP-01      PASS\n  IV-01        PASS\n  COVER-01     PASS\n  FRESH-01     PASS\nreport: validation\\TSM_ai_packet_report_20261016T165056Z.json\n"
+  }
+]
