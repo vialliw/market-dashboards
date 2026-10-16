@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F5-T3 done by Agent D — critic gate PASS, cycle F5 CLOSED)
+Last Updated: 2026-10-16 (F6-T1 done by Agent B — WellnessCheck.py implemented, 3/3 AC PASS)
 Current Branch: main
 
 ## Repo
@@ -10,18 +10,20 @@ GexDashboard.py, hourly GitHub Actions → docs/ → GitHub Pages.
 
 ## Current cycle
 
-F5: external review of live-run results found (1) degenerate chains
-(live INTC 2026-10-19: single strike, call_oi=2, put_oi=0) emit
-mathematically-valid-but-meaningless metrics — F5-T1 adds payout
-eligibility rules (>=2 distinct finite-OI strikes AND positive total
-finite OI) so such expiries emit metrics_unavailable:true +
-data_quality:'insufficient_data' with per-metric availability
-(gamma_flip computed independently); (2) the broad except-ValueError
-in _per_expiry_metrics is narrowed — eligibility pre-checks keep
-compute fns off unusable slices and only numpy's empty-argmin
-message is tolerated; unrelated ValueErrors propagate.
-CONSTRAINT: NO live yfinance calls; tests must stay offline
-(tests/fixtures/TSM_ai_packet.json + synthetic dfs).
+F6: post-generation AI-packet validator (WellnessCheck.py) per the
+ChatGPT-APPROVED implementation plan v4 — a separate script with
+independent plain-Python reference implementations (NEVER imports
+GexDashboard) re-verifying every documented rule after generation:
+schema/numerics, availability flag/null/reason consistency incl.
+the exported-OI ambiguity directionality, gex aggregation, payout
+argmins + band flags, material gamma-flip crossings, stale-IV
+provenance, raw-snapshot reconciliation, coverage/freshness warns.
+PASS/WARN/FAIL/unperformed outcomes, structured reports,
+provenance, exit codes 0/0/1/2, reports never overwrite input.
+CONSTRAINT: NO live yfinance calls; tests stay offline
+(tests/fixtures/* only).
+
+## What's Done
 
 ## What's Done
 
@@ -474,10 +476,81 @@ CONSTRAINT: NO live yfinance calls; tests must stay offline
       devin_blackboard/*; tree clean.
       Cycle F5 CLOSED.
 
+- F6-T1 (B, done): WellnessCheck.py — post-generation
+  ai_packet validator, separate script, NEVER imports
+  GexDashboard (independent plain-Python reference impls
+  of the documented production rules). Checks per the
+  approved plan table: SCHEMA-01 (required fields/types,
+  unique expiry+strike keys, schema_version {1.0}),
+  NUMERIC-01 (no NaN/Inf tokens, spot>0, OI>=0, ISO
+  dates), AVAIL-01a (flag/null/reason consistency),
+  AVAIL-01b (eligibility directionality: >=2 exported
+  positive-OI strikes proves eligible -> FAIL on
+  false-unavailable; <2 is ambiguous without raw rows ->
+  verdict unperformed; reason-code always unperformed
+  without snapshot; with --snapshot exact eligibility +
+  reason from raw rows, FAIL on mismatch), AVAIL-01c
+  (gamma_flip nullable independent of payout
+  availability), AGG-01 (strike->expiry->book net_gex
+  sums, tol max(1e-9,1e-9*mag)), MAXPAIN-01 (canonical
+  argmin exact match + tie count), MAXPAIN-02 (band
+  candidates over full usable chain; fell_back/
+  boundary_hit/selected_* flags), FLIP-01 (material
+  neg->pos crossing, upper strike, no interpolation,
+  nearest-spot + whole-book nearest_gamma_flip), IV-01
+  (stale_iv iff iv:null AND raw>2.0; no unflagged >2.0),
+  SNAP-01 ((expiry,strike,type) reconciliation; permitted
+  transforms NaN->0 OI + NaN->null IV; >1e-6 rel gex/OI
+  mismatch FAIL; 'unperformed' w/o snapshot), COVER-01
+  (0-strike/sparse<10/>50% missing-OI warns), FRESH-01
+  (>72h or --max-age-hours warn). INPUT-01 (unreadable/
+  malformed/unsupported schema) + CHECKER-ERR (exit 2);
+  structured report on every run incl. FAIL; provenance:
+  packet+snapshot SHA-256, generated_utc, checker git
+  HEAD (null+note when unversioned), schema_version,
+  per-expiry counts {strikes, finite_oi_rows,
+  excluded_rows, stale_iv_rows, metrics_unavailable};
+  report 'x'-safe, never overwrites input. Exit 0/0/1/2.
+  Fixtures regenerated OFFLINE: TSM_ai_packet.json rebuilt
+  via current build_ai_packet from a chain RECONSTRUCTED
+  out of the old fixture's exported strikes (every
+  value the 33 legacy tests assert preserved: total_net_
+  gex -52,574,553.7344639, flips 430/432.5/442.5/460/465/
+  440/475, argmins 435/450/445/460/470/420/450, 23 stale
+  strikes) now carrying all F2-F5 fields + corrected
+  de-artifacted flips; TSM_snapshot.pkl = the
+  reconstructed reconciling chain; TSM_raw_* pair =
+  offline replay of the preserved raw chain
+  (_prefix_run/tsm_snapshot.pkl, frozen clock
+  2026-10-16T14:00Z) carrying real NaN-OI rows for the
+  NaN->0 path. NOTE: _prefix_run snapshot is a DIFFERENT
+  fetch (~72/105 strikes' OI differ on 10-16) — replaying
+  it as the shared fixture would break 2 hardcoded legacy
+  flip asserts, hence the two-pair layout (regen script:
+  devin_blackboard/regen_f6_fixture.py). TASKS.json AC-3
+  had a JSON-escaping bug (formfeed \f in the path) —
+  command corrected to forward slashes, same criterion.
+  tests/test_wellness.py: 41 offline tests — hand-calc
+  mini-books (3-strike argmin, boundary-hit vs fell_back
+  vs between-strikes, out-of-band OI shifting the
+  constrained minimizer, flip floor/zero-gex/multi-
+  crossing/nearest-spot), fixture PASS (+fresh override),
+  stale-utc WARN, tamper FAILs (max_pain, flip, agg, IV
+  provenance x2, false-unavailable-on-eligible,
+  flag/null consistency, dq-on-available, NaN token,
+  duplicate strike), ambiguity-without-snapshot +
+  (100,1)/(110,0) vs (100,1)/(110,NaN) identical-export
+  resolution, reason-mismatch FAIL, INPUT-01 x3,
+  CHECKER-ERR exit 2, no-overwrite, default report path,
+  cover warns, provenance fields. pytest 74/74 (33+41);
+  findstr yfinance tests: no match; CLI exit 0 PASS.
+  ACs: 3/3 PASS. Commits 5519f6d, 1342d64, 8593526.
+
 ## Ready
 
-- (none — cycle F5 closed; awaiting
-  orchestrator review/next cycle)
+- F6-T2 (C): adversarial review — mutation probes
+  corrupting each checked invariant should be caught by
+  the matching check_id.
 
 ## Notes for reviewers
 
