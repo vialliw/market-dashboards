@@ -116,11 +116,29 @@ def compute_gex(df, spot, r=0.01):
 # =========================
 # Max Pain
 # =========================
-def compute_max_pain(df):
+def compute_max_pain(df, spot=None):
 
     strikes = sorted(df['strike'].unique())
+
+    if spot is not None:
+
+        bounded = [
+            s
+            for s in strikes
+            if 0.7 * spot <= s <= 1.3 * spot
+        ]
+
+        # Fall back to all strikes if the
+        # spot band empties the candidate set.
+        if bounded:
+            strikes = bounded
+
     pains = []
 
+    # justified: max pain requires evaluating
+    # total pain at every candidate strike over
+    # all option rows; kept as the existing
+    # O(strikes x rows) loop for readability.
     for s in strikes:
 
         pain = 0
@@ -149,7 +167,7 @@ def compute_max_pain(df):
 # =========================
 # Gamma Flip
 # =========================
-def compute_gamma_flip(df):
+def compute_gamma_flip(df, spot=None):
 
     grouped = (
         df.groupby('strike')['gex']
@@ -160,15 +178,46 @@ def compute_gamma_flip(df):
     strikes = grouped.index.values
     gex_vals = grouped.values
 
-    for i in range(1, len(gex_vals)):
+    if len(gex_vals) == 0:
+        return None
 
-        if (
-            gex_vals[i - 1] < 0
-            and gex_vals[i] > 0
-        ):
-            return strikes[i]
+    # Materiality filter: deep-OTM strikes carry
+    # noise-level gex from stale quotes, so ignore
+    # any strike whose |gex| is below 1% of the
+    # max |gex| in this df. The max-|gex| strike
+    # itself always survives, so the filter can
+    # never empty the set.
+    materiality = (
+        0.01 * np.abs(gex_vals).max()
+    )
 
-    return None
+    material = (
+        np.abs(gex_vals) >= materiality
+    )
+
+    m_strikes = strikes[material]
+    m_gex = gex_vals[material]
+
+    # Negative -> positive crossings between
+    # consecutive material strikes.
+    crossing_idx = (
+        np.where(
+            (m_gex[:-1] < 0)
+            & (m_gex[1:] > 0)
+        )[0] + 1
+    )
+
+    if len(crossing_idx) == 0:
+        return None
+
+    crossings = m_strikes[crossing_idx]
+
+    if spot is None:
+        return crossings[0]
+
+    return crossings[
+        np.argmin(np.abs(crossings - spot))
+    ]
 
 
 # =========================
@@ -465,7 +514,10 @@ def build_ai_packet(
         else "-Gamma"
     )
 
-    overall_gamma_flip = compute_gamma_flip(df)
+    overall_gamma_flip = compute_gamma_flip(
+        df,
+        spot=spot
+    )
 
     expiry_objects = []
 
@@ -520,9 +572,15 @@ def build_ai_packet(
             else "-Gamma"
         )
 
-        max_pain = compute_max_pain(sub)
+        max_pain = compute_max_pain(
+            sub,
+            spot=spot
+        )
 
-        gamma_flip = compute_gamma_flip(sub)
+        gamma_flip = compute_gamma_flip(
+            sub,
+            spot=spot
+        )
 
         call_walls, put_walls = compute_top_walls(sub)
 
@@ -541,7 +599,13 @@ def build_ai_packet(
 
             strike = float(row['strike'])
 
-            strike_objects.append({
+            iv = float(row['impliedVolatility'])
+
+            # IV above 200% is a stale quote
+            # artifact, not a real vol reading.
+            stale_iv = iv > 2.0
+
+            strike_obj = {
 
                 "strike": strike,
 
@@ -569,8 +633,8 @@ def build_ai_packet(
                     put_gex.get(strike, 0)
                 ),
 
-                "implied_volatility": float(
-                    row['impliedVolatility']
+                "implied_volatility": (
+                    None if stale_iv else iv
                 ),
 
                 "is_call_wall": bool(
@@ -588,7 +652,12 @@ def build_ai_packet(
                 "distance_from_spot_pct": float(
                     ((strike - spot) / spot) * 100
                 )
-            })
+            }
+
+            if stale_iv:
+                strike_obj["stale_iv"] = True
+
+            strike_objects.append(strike_obj)
 
         expiry_objects.append({
 
@@ -639,7 +708,17 @@ def build_ai_packet(
 
             "source": "yfinance",
 
-            "analysis_type": "gamma_exposure"
+            "analysis_type": "gamma_exposure",
+
+            "data_quality": (
+                "Strikes flagged 'stale_iv': true "
+                "had stale implied_volatility "
+                "(>200%) replaced with null; "
+                "their OI and GEX fields remain "
+                "valid. 'gamma_flip' is null when "
+                "no material sign crossing exists "
+                "for that expiry."
+            )
         },
 
         "system_prompt": (
@@ -911,9 +990,15 @@ def plot_gex_dashboard(
             .reset_index()
         )
 
-        max_pain = compute_max_pain(sub)
+        max_pain = compute_max_pain(
+            sub,
+            spot=spot
+        )
 
-        gamma_flip = compute_gamma_flip(sub)
+        gamma_flip = compute_gamma_flip(
+            sub,
+            spot=spot
+        )
 
         call_walls, put_walls = (
             compute_top_walls(sub)

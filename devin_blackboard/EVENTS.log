@@ -1,2 +1,52 @@
 
 [2026-10-16T09:47:06.504997+00:00] [EXECUTOR] claimed F1-T1
+[2026-10-16T09:51:02.702235+00:00] [EXECUTOR] completed F1-T1 -> compute_gamma_flip(df,spot=None): 1%-of-max-|gex| materiality filter, neg->pos crossings among material strikes only, nearest-to-spot selection when spot given (ascending-scan when None), None when no material crossing. compute_max_pain(df,spot=None): candidates restricted to [0.7*spot,1.3*spot] with all-strikes fallback. All 4 call sites now pass spot (build_ai_packet lines ~517/575, plot loop ~980). build_ai_packet strike_objects: iv>2.0 -> implied_volatility=None + stale_iv:true (OI/GEX preserved); data_quality note added to meta. New tests/test_gex_metrics.py (11 tests, offline via TSM fixture) + tests/conftest.py. Fixture results: 2026-10-16 flip=430.0 (was 370), aggregate book flip=430.0, all per-expiry flips now material crossings near spot (430/432.5/442.5/460/465/440/475), all max_pain in [295.4,548.7]. pytest: 11 passed; all 5 ACs PASS.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "module_imports",
+    "command": "python -c \"import GexDashboard\"",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  },
+  {
+    "id": "AC-2",
+    "check": "pytest_full_suite",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "...........                                                              [100%]\n11 passed in 4.23s\n"
+  },
+  {
+    "id": "AC-3",
+    "check": "gamma_flip_tests",
+    "command": "python -m pytest tests/test_gex_metrics.py -k flip -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "......                                                                   [100%]\n6 passed, 5 deselected in 1.31s\n"
+  },
+  {
+    "id": "AC-4",
+    "check": "max_pain_tests",
+    "command": "python -m pytest tests/test_gex_metrics.py -k max_pain -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "....                                                                     [100%]\n4 passed, 7 deselected in 4.37s\n"
+  },
+  {
+    "id": "AC-5",
+    "check": "no_network_in_tests",
+    "command": "findstr /s /m \"yfinance\" tests\\*.py",
+    "expected_exit": 1,
+    "actual_exit": 1,
+    "passed": true,
+    "output": ""
+  }
+]
+[2026-10-16] B | DONE F1-T1 | gamma_flip+max_pain spot-aware fix, stale_iv flag; 11 offline tests, 5/5 AC PASS | files: GexDashboard.py, tests/test_gex_metrics.py, tests/conftest.py

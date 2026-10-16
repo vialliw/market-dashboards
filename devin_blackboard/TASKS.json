@@ -3,7 +3,7 @@
     "id": "F1-T1",
     "title": "Fix gamma_flip/max_pain artifacts + stale-IV hygiene in GexDashboard.py (issue #1)",
     "role": "executor",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [],
     "assigned_to": "B",
     "input_files": [
