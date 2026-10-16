@@ -859,6 +859,187 @@ def test_false_available_reason_mismatch(tmp_path):
 
 
 # =========================
+# F6-T4 regressions: MAXPAIN-02 candidate-set
+# ambiguity, unreadable snapshot, raw-only expiry
+# =========================
+
+def _band_nan_strikes():
+    """Exported strikes identical whether raw strike 80
+    was (0,0) or (NaN,NaN): band [70,130] holds ONLY the
+    ambiguous strike 80; finite OI lives at 50 (call 5)
+    / 200 (put 5) -> flat pain 750 on [50,200]."""
+    return [
+        _strike(50, co=5, po=0, cg=-0.01),
+        _strike(80, co=0, po=0, cg=0.0),
+        _strike(200, co=0, po=5, cg=0.01),
+    ]
+
+
+def _band_nan_packet(fell_back_world):
+    """fell_back_world=True -> metrics as produced when
+    raw 80 was all-NaN (band empty -> fell_back, mpc=50).
+    False -> metrics as produced when raw 80 was a real
+    0-OI candidate (mpc=80, both selected flags)."""
+    if fell_back_world:
+        m = {
+            "max_pain": 50.0,
+            "max_pain_constrained": 50.0,
+            "candidate_band": [70.0, 130.0],
+            "band_fell_back": True,
+            "band_boundary_hit": False,
+            "selected_lowest_candidate": False,
+            "selected_highest_candidate": False,
+        }
+    else:
+        m = {
+            "max_pain": 50.0,
+            "max_pain_constrained": 80.0,
+            "candidate_band": [70.0, 130.0],
+            "band_fell_back": False,
+            "band_boundary_hit": False,
+            "selected_lowest_candidate": True,
+            "selected_highest_candidate": True,
+        }
+    m["gamma_flip"] = 200.0  # -0.01@50 -> +0.01@200
+    e = _mk_expiry(
+        "2027-01-15", _band_nan_strikes(), metrics=m)
+    return _mk_packet([e], nearest_gamma_flip=200.0)
+
+
+def _band_nan_snapshot(tmp_path, strike80_oi, name):
+    """Raw rows matching _band_nan_strikes() exports
+    (NaN->0 collapse permitted); strike80_oi may be
+    float('nan')."""
+    df = _raw_df([
+        ("2027-01-15", 50.0, "call", 5.0, -0.01, 0.3),
+        ("2027-01-15", 50.0, "put", 0.0, 0.0, 0.3),
+        ("2027-01-15", 80.0, "call", strike80_oi, 0.0, 0.3),
+        ("2027-01-15", 80.0, "put", strike80_oi, 0.0, 0.3),
+        ("2027-01-15", 200.0, "call", 0.0, 0.01, 0.3),
+        ("2027-01-15", 200.0, "put", 5.0, 0.0, 0.3),
+    ])
+    return _write_snapshot(tmp_path, df, name)
+
+
+def test_maxpain02_ambiguous_band_no_snapshot(tmp_path):
+    """F6-T4/F3 regression: an HONEST packet whose band
+    eligibility hinges on an exported-0 strike that may
+    have been missing-NaN must NOT be FAILed — the
+    verdict is 'unperformed' without a snapshot."""
+    rep, code, _ = _run(
+        _write(tmp_path, _band_nan_packet(True)))
+    c = _check(rep, "MAXPAIN-02")
+    assert c["status"] == "unperformed", c["detail"]
+    assert "missing-NaN" in c["detail"]
+    assert not c["findings"]
+    # the unconstrained argmin is unaffected — still PASS
+    assert _check(rep, "MAXPAIN-01")["status"] == "PASS"
+    assert code == 0
+    # the all-true-zero interpretation of the identical
+    # export is equally unprovable -> unperformed too
+    rep2, code2, _ = _run(
+        _write(tmp_path, _band_nan_packet(False), "z.json"))
+    assert _check(
+        rep2, "MAXPAIN-02")["status"] == "unperformed"
+    assert code2 == 0
+
+
+def test_maxpain02_ambiguity_resolved_by_snapshot(tmp_path):
+    """With --snapshot the raw rows decide the candidate
+    set: the honest NaN-world packet PASSes and the
+    incompatible zero-world packet FAILs a true
+    mismatch (and vice versa on a zero-OI raw row)."""
+    pkt_nan = _band_nan_packet(True)
+    pkt_zero = _band_nan_packet(False)
+
+    snap_nan = _band_nan_snapshot(
+        tmp_path, float("nan"), "nan.pkl")
+    rep, code, _ = _run(
+        _write(tmp_path, pkt_nan, "a.json"),
+        snapshot=snap_nan)
+    assert code == 0
+    assert _check(rep, "MAXPAIN-02")["status"] == "PASS"
+
+    rep2, code2, _ = _run(
+        _write(tmp_path, pkt_zero, "b.json"),
+        snapshot=snap_nan)
+    assert code2 == 1
+    assert _check(rep2, "MAXPAIN-02")["status"] == "FAIL"
+
+    snap_zero = _band_nan_snapshot(tmp_path, 0.0, "z.pkl")
+    rep3, code3, _ = _run(
+        _write(tmp_path, pkt_zero, "c.json"),
+        snapshot=snap_zero)
+    assert code3 == 0
+    assert _check(rep3, "MAXPAIN-02")["status"] == "PASS"
+
+    rep4, code4, _ = _run(
+        _write(tmp_path, pkt_nan, "d.json"),
+        snapshot=snap_zero)
+    assert code4 == 1
+    assert _check(rep4, "MAXPAIN-02")["status"] == "FAIL"
+
+
+def test_unreadable_snapshot_fails_snap01(tmp_path):
+    """F6-T4/F1 regression: an unreadable/missing
+    --snapshot file is a SNAP-01 FAIL (exit 1), never a
+    CHECKER-ERR (exit 2)."""
+    pkt = _write(tmp_path, _mk_packet(
+        [_three_strike_expiry()], nearest_gamma_flip=110.0))
+    rep, code, _ = _run(
+        pkt, snapshot=tmp_path / "no_such.pkl")
+    assert code == 1
+    c = _check(rep, "SNAP-01")
+    assert c["status"] == "FAIL"
+    assert all(
+        x["check_id"] != "CHECKER-ERR"
+        for x in rep["checks"])
+    # provenance records the hash failure honestly
+    assert rep["provenance"]["snapshot_hash"] is None
+    assert "snapshot_hash_error" in rep["provenance"]
+
+    # a non-DataFrame pickle is likewise SNAP-01 FAIL exit 1
+    bad = tmp_path / "notdf.pkl"
+    with open(bad, "wb") as f:
+        pickle.dump({"x": 1}, f)
+    rep2, code2, _ = _run(pkt, snapshot=bad)
+    assert code2 == 1
+    assert _check(rep2, "SNAP-01")["status"] == "FAIL"
+
+
+def test_snapshot_raw_only_expiry_fails(tmp_path):
+    """F6-T4/F2 regression: a snapshot expiry absent from
+    the packet is unreconciled raw data -> SNAP-01 FAIL."""
+    e = _mk_expiry(
+        "2027-01-15",
+        [_strike(100, co=1, po=0, cg=-0.01),
+         _strike(110, co=0, po=1, pg=0.01)],
+        metrics={
+            "max_pain": 100.0,
+            "max_pain_constrained": 100.0,
+            "candidate_band": [70.0, 130.0],
+            "selected_lowest_candidate": True,
+            "gamma_flip": 110.0,
+        })
+    pkt = _mk_packet([e], nearest_gamma_flip=110.0)
+    df = _raw_df([
+        ("2027-01-15", 100.0, "call", 1.0, -0.01, 0.3),
+        ("2027-01-15", 110.0, "put", 1.0, 0.01, 0.3),
+        ("2030-06-20", 100.0, "call", 9.0, -0.01, 0.3),
+    ])
+    rep, code, _ = _run(
+        _write(tmp_path, pkt),
+        snapshot=_write_snapshot(tmp_path, df))
+    assert code == 1
+    c = _check(rep, "SNAP-01")
+    assert c["status"] == "FAIL"
+    assert any(
+        f["expiry"] == "2030-06-20" for f in c["findings"])
+    # the packet's own expiry still reconciles cleanly
+    assert _check(rep, "MAXPAIN-02")["status"] == "PASS"
+
+
+# =========================
 # INPUT-01 / CHECKER-ERR / report handling
 # =========================
 

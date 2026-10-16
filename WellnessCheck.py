@@ -397,6 +397,38 @@ def _ref_payout_ineligibility_raw(rows):
     return None
 
 
+def _raw_payout_rows(raw_rows):
+    """Checker-format payout rows aggregated from raw
+    snapshot rows: one row per strike carrying >=1
+    finite-strike/finite-OI raw row — exactly the
+    production candidate set. All-NaN-OI strikes are
+    dropped entirely while a single finite-OI row (of
+    either type) keeps its strike eligible."""
+    acc = {}
+    for r in raw_rows:
+        k, oi = r.get("strike"), r.get("openInterest")
+        if not (_finite(k) and _finite(oi)):
+            continue
+        a = acc.setdefault(
+            k, {"strike": k, "call_oi": 0.0, "put_oi": 0.0})
+        if r.get("type") == "call":
+            a["call_oi"] += oi
+        else:
+            a["put_oi"] += oi
+    return list(acc.values())
+
+
+def _ambiguous_exported_strike(s):
+    """An exported strike with no positive OI on either
+    side is ambiguous: exported 0 conflates a true-zero
+    raw row (a real payout candidate) with a missing-NaN
+    raw row (excluded from the candidate set entirely)."""
+    co, po = s.get("call_oi"), s.get("put_oi")
+    return not (
+        (_num(co) and co > 0) or (_num(po) and po > 0)
+    )
+
+
 # =========================
 # Checks
 # =========================
@@ -1061,14 +1093,42 @@ def check_max_pain(packet):
     return _result("MAXPAIN-01", status, detail, findings)
 
 
-def check_max_pain_constrained(packet):
+def check_max_pain_constrained(packet, raw_index=None):
     """MAXPAIN-02: constrained recompute — payouts over
     the full usable chain, candidates restricted to
-    [0.7*spot, 1.3*spot]; all band flags must match."""
+    [0.7*spot, 1.3*spot]; all band flags must match.
+
+    Candidate-set ambiguity: exported OI=0 conflates a
+    true-zero raw row (a real production candidate) with
+    a missing-NaN raw row (excluded from the candidate
+    set entirely — see AVAIL-01b). Without --snapshot the
+    packet cannot distinguish the two, so an expiry whose
+    verdict DIFFERS between the extreme hypotheses (all
+    exported-0 strikes real vs all dropped) is honestly
+    'unperformed' — never a FAIL on a possibly-honest
+    packet. If the verdict is identical either way it is
+    ambiguity-proof and verified normally. With
+    --snapshot the raw finite-OI rows decide exactly
+    which strikes were candidates and any true mismatch
+    is a FAIL."""
     findings = []
     evaluated = 0
     skipped = 0
+    ambiguous = []
     spot = _packet_spot(packet)
+    flag_map = (
+        ("max_pain_band_fell_back", "band_fell_back"),
+        ("max_pain_band_boundary_hit", "band_boundary_hit"),
+        ("max_pain_selected_lowest_candidate",
+         "selected_lowest_candidate"),
+        ("max_pain_selected_highest_candidate",
+         "selected_highest_candidate"),
+    )
+    verdict_keys = (
+        "max_pain", "band_fell_back", "band_boundary_hit",
+        "selected_lowest_candidate",
+        "selected_highest_candidate",
+    )
     for e in _expiries(packet) or []:
         if not isinstance(e, dict):
             continue
@@ -1077,9 +1137,35 @@ def check_max_pain_constrained(packet):
         if mu is not False or spot is None:
             skipped += 1
             continue
-        evaluated += 1
-        ref = _ref_max_pain_constrained(_strikes(e), spot)
 
+        if (
+            raw_index is not None
+            and raw_index.oi_rows(exp) is not None
+        ):
+            # reconciled: raw finite-OI rows are exactly
+            # production's usable/candidate rows
+            ref = _ref_max_pain_constrained(
+                _raw_payout_rows(raw_index.rows(exp)), spot)
+        else:
+            strikes = _strikes(e)
+            ref = _ref_max_pain_constrained(strikes, spot)
+            unambig = [
+                s for s in strikes
+                if isinstance(s, dict)
+                and not _ambiguous_exported_strike(s)
+            ]
+            if len(unambig) != len(strikes):
+                ref0 = _ref_max_pain_constrained(unambig, spot)
+                if any(
+                    ref[k] != ref0[k] for k in verdict_keys
+                ):
+                    # verdict hinges on exported-0 strikes
+                    # that may have been missing-NaN —
+                    # cannot honestly PASS or FAIL
+                    ambiguous.append(exp)
+                    continue
+
+        evaluated += 1
         if e.get("max_pain_constrained") != ref["max_pain"]:
             findings.append(_finding(
                 exp, "max_pain_constrained",
@@ -1092,29 +1178,33 @@ def check_max_pain_constrained(packet):
                 exp, "max_pain_candidate_band",
                 e.get("max_pain_candidate_band"),
                 ref["candidate_band"]))
-        flag_map = (
-            ("max_pain_band_fell_back", "band_fell_back"),
-            ("max_pain_band_boundary_hit", "band_boundary_hit"),
-            ("max_pain_selected_lowest_candidate",
-             "selected_lowest_candidate"),
-            ("max_pain_selected_highest_candidate",
-             "selected_highest_candidate"),
-        )
         for pf, rf in flag_map:
             if e.get(pf) != ref[rf]:
                 findings.append(_finding(
                     exp, pf, e.get(pf), ref[rf]))
 
-    if evaluated == 0:
+    if evaluated == 0 and not ambiguous:
         return _result(
             "MAXPAIN-02", "unperformed",
             "no available expiry with finite spot")
-    status = "FAIL" if findings else "PASS"
+    if findings:
+        status = "FAIL"
+    elif ambiguous:
+        status = "unperformed"
+    else:
+        status = "PASS"
     detail = (
         f"{len(findings)} constrained-field mismatch(es)"
         if findings else
         f"constrained argmin + band flags match on "
         f"{evaluated} expiry(ies)")
+    if ambiguous:
+        detail += (
+            f"; {len(ambiguous)} expiry(ies) "
+            "unverifiable — verdict depends on exported-0 "
+            "strikes that may have been missing-NaN "
+            f"({', '.join(str(x) for x in ambiguous)}; "
+            "reconcile via --snapshot)")
     if skipped:
         detail += f"; {skipped} expiry(ies) skipped"
     return _result("MAXPAIN-02", status, detail, findings)
@@ -1365,6 +1455,19 @@ def check_snapshot(packet, snapshot_path):
             None, "expiry",
             f"{idx.bad_rows} row(s)",
             "parseable expiry on every raw row"))
+
+    # snapshot expiries absent from the packet are
+    # unreconciled raw rows — never silently ignored
+    pkt_exp_names = {
+        e.get("expiry") for e in _expiries(packet) or []
+        if isinstance(e, dict)
+    }
+    for raw_exp in sorted(set(idx.by_expiry) - pkt_exp_names):
+        findings.append(_finding(
+            raw_exp, "expiry",
+            f"{len(idx.by_expiry[raw_exp])} raw row(s) "
+            "in snapshot only",
+            "expiry present in packet"))
 
     for e in _expiries(packet) or []:
         if not isinstance(e, dict):
@@ -1655,7 +1758,7 @@ def validate_packet(packet, snapshot_path=None,
     checks.append(check_avail_c(packet))
     checks.append(check_agg(packet))
     checks.append(check_max_pain(packet))
-    checks.append(check_max_pain_constrained(packet))
+    checks.append(check_max_pain_constrained(packet, raw_index))
     checks.append(check_flip(packet))
     checks.append(check_iv(packet))
     checks.append(check_cover(packet, raw_index))
@@ -1674,6 +1777,16 @@ def build_report(packet, packet_path, packet_bytes,
 
     meta = packet.get("meta") if isinstance(packet, dict) else {}
     commit = _checker_git_commit()
+    snapshot_hash = None
+    snapshot_hash_error = None
+    if snapshot_path:
+        try:
+            snapshot_hash = _sha256(snapshot_path)
+        except Exception as exc:
+            # an unreadable snapshot is already a SNAP-01
+            # FAIL finding — hashing must not turn it into
+            # a checker-internal error
+            snapshot_hash_error = repr(exc)
     provenance = {
         "packet_hash": hashlib.sha256(packet_bytes).hexdigest(),
         "packet_path": str(packet_path),
@@ -1681,10 +1794,7 @@ def build_report(packet, packet_path, packet_bytes,
             meta.get("generated_utc")
             if isinstance(meta, dict) else None
         ),
-        "snapshot_hash": (
-            _sha256(snapshot_path)
-            if snapshot_path else None
-        ),
+        "snapshot_hash": snapshot_hash,
         "snapshot_path": (
             str(snapshot_path) if snapshot_path else None
         ),
@@ -1700,6 +1810,8 @@ def build_report(packet, packet_path, packet_bytes,
         ),
         "per_expiry_counts": counts,
     }
+    if snapshot_hash_error is not None:
+        provenance["snapshot_hash_error"] = snapshot_hash_error
     if snapshot_path is None:
         provenance["counts_note"] = (
             "finite_oi_rows / excluded_rows require "

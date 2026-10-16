@@ -843,9 +843,11 @@ pkt_n3 = honest_packet(rows_nan3, 100.0, [EXP],
 e_n3 = pkt_n3["market_snapshot"]["expiries"][0]
 r3, c3, _ = run(write_pkt(pkt_n3, "hon_nan3.json"))
 check("S6b in-band NaN strike below finite candidate on "
-      "pain-tie -> mpc mismatch on honest packet "
-      "(prod {90}->90, checker adds exported-0 75)",
-      chk(r3, "MAXPAIN-02")["status"] == "FAIL"
+      "pain-tie -> 'unperformed' on honest packet "
+      "(F6-T4 fix: verdict hinges on exported-0 75; "
+      "was a false FAIL pre-fix)",
+      chk(r3, "MAXPAIN-02")["status"] == "unperformed"
+      and c3 == 0
       and e_n3["max_pain_constrained"] == 90.0,
       f"prod mpc={e_n3['max_pain_constrained']} "
       f"checker={json.dumps(chk(r3,'MAXPAIN-02')['findings'])[:240]}")
@@ -871,11 +873,13 @@ r, c, _ = run(write_pkt(
     mk_packet([e_norm], nearest=110.0), "xexp.json"),
     snapshot=s_x)
 check("S7 raw-only expiry (2030-06-20) absent from "
-      "packet -> SNAP-01 verdict documented",
-      chk(r, "SNAP-01")["status"] == "PASS",
+      "packet -> SNAP-01 FAIL (F6-T4 fix: raw-only "
+      "expiries are reconciled; was silent PASS pre-fix)",
+      chk(r, "SNAP-01")["status"] == "FAIL"
+      and any(f.get("expiry") == "2030-06-20"
+              for f in chk(r, "SNAP-01")["findings"]),
       f"SNAP-01={chk(r,'SNAP-01')['status']} "
-      f"detail={chk(r,'SNAP-01')['detail'][:160]} "
-      "(raw-only expiry is NOT reconciled — gap)")
+      f"detail={chk(r,'SNAP-01')['detail'][:160]}")
 
 # ======================================================
 # S8: fixture integrity
