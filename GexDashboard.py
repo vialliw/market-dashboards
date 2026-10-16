@@ -393,6 +393,47 @@ def compute_gamma_flip(df, spot=None):
 
 
 # =========================
+# Per-Expiry Metric Bundle
+# =========================
+def _per_expiry_metrics(sub, spot):
+    """Compute one expiry's max_pain /
+    constrained max_pain / gamma_flip bundle.
+
+    Returns None when the slice cannot support
+    the payout metrics — e.g. an expiry whose
+    every row carries NaN openInterest (the
+    live SPY 2026-10-29 chain) or one with no
+    rows at all. The raw functions raise
+    ValueError loudly on such input for direct
+    callers; the packet/plot call sites absorb
+    it HERE so one unusable expiry degrades to
+    explicit nulls + a flag instead of
+    aborting the whole ticker. Only ValueError
+    is tolerated — any other failure still
+    propagates."""
+
+    try:
+
+        return {
+            "max_pain": compute_max_pain(sub),
+            "max_pain_constrained": (
+                compute_max_pain_constrained(
+                    sub,
+                    spot=spot
+                )
+            ),
+            "gamma_flip": compute_gamma_flip(
+                sub,
+                spot=spot
+            ),
+        }
+
+    except ValueError:
+
+        return None
+
+
+# =========================
 # Top Walls
 # =========================
 def compute_top_walls(df, top_n=3):
@@ -744,30 +785,127 @@ def build_ai_packet(
             else "-Gamma"
         )
 
-        max_pain = compute_max_pain(sub)
-
-        max_pain_constrained = (
-            compute_max_pain_constrained(
-                sub,
-                spot=spot
-            )
-        )
-
-        gamma_flip = compute_gamma_flip(
-            sub,
-            spot=spot
-        )
+        # One unusable expiry (e.g. every row
+        # missing openInterest) must not abort
+        # the whole ticker: the raw metric fns
+        # raise ValueError on insufficient
+        # data, which _per_expiry_metrics
+        # absorbs so this expiry degrades to
+        # explicit nulls + a flag — never
+        # artifact values.
+        metrics = _per_expiry_metrics(sub, spot)
 
         call_walls, put_walls = compute_top_walls(sub)
 
-        atm_strike = min(
-            grouped['strike'],
-            key=lambda x: abs(x - spot)
+        if len(grouped):
+
+            atm_strike = min(
+                grouped['strike'],
+                key=lambda x: abs(x - spot)
+            )
+
+            atm_iv = grouped[
+                grouped['strike'] == atm_strike
+            ]['impliedVolatility'].values[0]
+
+        else:
+
+            atm_iv = None
+
+        gamma_flip = (
+            metrics["gamma_flip"]
+            if metrics is not None
+            else None
         )
 
-        atm_iv = grouped[
-            grouped['strike'] == atm_strike
-        ]['impliedVolatility'].values[0]
+        if metrics is not None:
+
+            mpc = metrics["max_pain_constrained"]
+
+            metric_fields = {
+
+                "max_pain": float(
+                    metrics["max_pain"]
+                ),
+
+                "max_pain_constrained": float(
+                    mpc["max_pain"]
+                ),
+
+                "max_pain_candidate_band": (
+                    [
+                        float(b)
+                        for b in mpc[
+                            "candidate_band"
+                        ]
+                    ]
+                    if mpc["candidate_band"]
+                    is not None
+                    else None
+                ),
+
+                "max_pain_band_fell_back": bool(
+                    mpc["band_fell_back"]
+                ),
+
+                "max_pain_band_boundary_hit": bool(
+                    mpc["band_boundary_hit"]
+                ),
+
+                "max_pain_selected_lowest_candidate":
+                    bool(
+                        mpc[
+                            "selected_lowest_candidate"
+                        ]
+                    ),
+
+                "max_pain_selected_highest_candidate":
+                    bool(
+                        mpc[
+                            "selected_highest_candidate"
+                        ]
+                    ),
+
+                "gamma_flip": (
+                    float(gamma_flip)
+                    if gamma_flip
+                    else None
+                )
+            }
+
+        else:
+
+            # Explicit nulls for every metric
+            # field plus a machine-readable
+            # reason — consumers can detect
+            # the unavailability instead of
+            # reading an artifact strike.
+            metric_fields = {
+
+                "max_pain": None,
+
+                "max_pain_constrained": None,
+
+                "max_pain_candidate_band": None,
+
+                "max_pain_band_fell_back": None,
+
+                "max_pain_band_boundary_hit": None,
+
+                "max_pain_selected_lowest_candidate":
+                    None,
+
+                "max_pain_selected_highest_candidate":
+                    None,
+
+                "gamma_flip": None,
+
+                "data_quality": (
+                    "no_finite_oi"
+                    if len(_finite_oi_rows(sub)) == 0
+                    else "insufficient_data"
+                )
+            }
 
         strike_objects = []
 
@@ -847,52 +985,17 @@ def build_ai_packet(
 
             "gamma_regime": gamma_regime,
 
-            "max_pain": float(max_pain),
+            **metric_fields,
 
-            "max_pain_constrained": float(
-                max_pain_constrained["max_pain"]
+            "metrics_unavailable": bool(
+                metrics is None
             ),
 
-            "max_pain_candidate_band": [
-                float(b)
-                for b in (
-                    max_pain_constrained[
-                        "candidate_band"
-                    ]
-                )
-            ],
-
-            "max_pain_band_fell_back": bool(
-                max_pain_constrained[
-                    "band_fell_back"
-                ]
-            ),
-
-            "max_pain_band_boundary_hit": bool(
-                max_pain_constrained[
-                    "band_boundary_hit"
-                ]
-            ),
-
-            "max_pain_selected_lowest_candidate": bool(
-                max_pain_constrained[
-                    "selected_lowest_candidate"
-                ]
-            ),
-
-            "max_pain_selected_highest_candidate": bool(
-                max_pain_constrained[
-                    "selected_highest_candidate"
-                ]
-            ),
-
-            "gamma_flip": (
-                float(gamma_flip)
-                if gamma_flip
+            "atm_iv": (
+                float(atm_iv)
+                if atm_iv is not None
                 else None
             ),
-
-            "atm_iv": float(atm_iv),
 
             "call_walls": [
                 {
@@ -948,7 +1051,18 @@ def build_ai_packet(
                 "max-pain payout sums. "
                 "'gamma_flip' is null when "
                 "no material sign crossing exists "
-                "for that expiry."
+                "for that expiry. Expiries flagged "
+                "'metrics_unavailable': true had "
+                "insufficient usable data for the "
+                "payout metrics (e.g. every "
+                "openInterest value missing); all "
+                "of their max_pain*, band-flag "
+                "and gamma_flip fields are "
+                "explicit nulls — never artifact "
+                "values — and 'data_quality' on "
+                "the expiry gives the reason. "
+                "Whole-book metrics are "
+                "unaffected."
             ),
 
             "metric_definitions": {
@@ -1003,6 +1117,19 @@ def build_ai_packet(
                     "Rows with missing (nonfinite) "
                     "openInterest are excluded "
                     "from all payout sums."
+                ),
+
+                "metrics_unavailable": (
+                    "True when an expiry's rows "
+                    "could not support the payout "
+                    "metrics (e.g. every "
+                    "openInterest value missing, "
+                    "'data_quality' = "
+                    "'no_finite_oi'). All "
+                    "max_pain*/gamma_flip fields "
+                    "for that expiry are explicit "
+                    "nulls rather than artifact "
+                    "values."
                 )
             }
         },
@@ -1277,32 +1404,36 @@ def plot_gex_dashboard(
             .reset_index()
         )
 
-        max_pain = compute_max_pain(sub)
+        # Same tolerance as build_ai_packet:
+        # one unusable expiry (e.g. all-NaN
+        # openInterest) degrades to omitted
+        # markers + a note, not a dead ticker.
+        metrics = _per_expiry_metrics(sub, spot)
 
-        max_pain_constrained = (
-            compute_max_pain_constrained(
-                sub,
-                spot=spot
-            )["max_pain"]
-        )
-
-        gamma_flip = compute_gamma_flip(
-            sub,
-            spot=spot
+        gamma_flip = (
+            metrics["gamma_flip"]
+            if metrics is not None
+            else None
         )
 
         call_walls, put_walls = (
             compute_top_walls(sub)
         )
 
-        atm_strike = min(
-            grouped['strike'],
-            key=lambda x: abs(x - spot)
-        )
+        if len(grouped):
 
-        atm_iv = grouped[
-            grouped['strike'] == atm_strike
-        ]['impliedVolatility'].values[0]
+            atm_strike = min(
+                grouped['strike'],
+                key=lambda x: abs(x - spot)
+            )
+
+            atm_iv = grouped[
+                grouped['strike'] == atm_strike
+            ]['impliedVolatility'].values[0]
+
+        else:
+
+            atm_iv = None
 
         # =========================
         # Open Interest
@@ -1417,66 +1548,89 @@ def plot_gex_dashboard(
         # =========================
         # Max Pain
         # =========================
-        # Canonical unconstrained max pain.
-        fig.add_vline(
-            x=max_pain,
-            line_color="cyan",
-            line_dash="dot",
-            row=i,
-            col=1
-        )
+        if metrics is not None:
 
-        # Separately labeled constrained variant
-        # (payout minimum inside the
-        # 0.7x-1.3x spot band).
-        fig.add_vline(
-            x=max_pain_constrained,
-            line_color="teal",
-            line_dash="dashdot",
-            row=i,
-            col=1
-        )
-
-        if legend_flags["max_pain"]:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=[None],
-                    y=[None],
-                    mode="lines",
-                    line=dict(
-                        color="cyan",
-                        dash="dot"
-                    ),
-                    name="Max Pain"
-                ),
+            # Canonical unconstrained max pain.
+            fig.add_vline(
+                x=metrics["max_pain"],
+                line_color="cyan",
+                line_dash="dot",
                 row=i,
                 col=1
             )
 
-            legend_flags["max_pain"] = False
-
-        if legend_flags["max_pain_constrained"]:
-
-            fig.add_trace(
-                go.Scatter(
-                    x=[None],
-                    y=[None],
-                    mode="lines",
-                    line=dict(
-                        color="teal",
-                        dash="dashdot"
-                    ),
-                    name=(
-                        "Max Pain "
-                        "(0.7x-1.3x spot band)"
-                    )
-                ),
+            # Separately labeled constrained
+            # variant (payout minimum inside the
+            # 0.7x-1.3x spot band).
+            fig.add_vline(
+                x=metrics["max_pain_constrained"][
+                    "max_pain"
+                ],
+                line_color="teal",
+                line_dash="dashdot",
                 row=i,
                 col=1
             )
 
-            legend_flags["max_pain_constrained"] = False
+            if legend_flags["max_pain"]:
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=[None],
+                        y=[None],
+                        mode="lines",
+                        line=dict(
+                            color="cyan",
+                            dash="dot"
+                        ),
+                        name="Max Pain"
+                    ),
+                    row=i,
+                    col=1
+                )
+
+                legend_flags["max_pain"] = False
+
+            if legend_flags["max_pain_constrained"]:
+
+                fig.add_trace(
+                    go.Scatter(
+                        x=[None],
+                        y=[None],
+                        mode="lines",
+                        line=dict(
+                            color="teal",
+                            dash="dashdot"
+                        ),
+                        name=(
+                            "Max Pain "
+                            "(0.7x-1.3x spot band)"
+                        )
+                    ),
+                    row=i,
+                    col=1
+                )
+
+                legend_flags[
+                    "max_pain_constrained"
+                ] = False
+
+        else:
+
+            # No usable payout data for this
+            # expiry — mark the subplot instead
+            # of drawing artifact markers.
+            fig.add_annotation(
+                x=spot,
+                y=oi_max * 0.8,
+                text=(
+                    "max_pain / gamma_flip "
+                    "unavailable (no finite OI)"
+                ),
+                showarrow=False,
+                row=i,
+                col=1
+            )
 
         # =========================
         # Gamma Flip
@@ -1539,14 +1693,18 @@ def plot_gex_dashboard(
         # =========================
         # ATM IV Annotation
         # =========================
-        fig.add_annotation(
-            x=spot,
-            y=oi_max * 0.9,
-            text=f"ATM IV: {atm_iv:.2%}",
-            showarrow=False,
-            row=i,
-            col=1
-        )
+        if atm_iv is not None and np.isfinite(
+            atm_iv
+        ):
+
+            fig.add_annotation(
+                x=spot,
+                y=oi_max * 0.9,
+                text=f"ATM IV: {atm_iv:.2%}",
+                showarrow=False,
+                row=i,
+                col=1
+            )
 
         fig.update_xaxes(
             range=[strike_min, strike_max],

@@ -778,6 +778,170 @@ def test_meta_metric_definitions_documented():
     assert "materiality_floor" in md
 
 
+# =========================
+# Unusable-expiry tolerance
+# =========================
+def test_ai_packet_all_nan_oi_expiry_null_metrics():
+    """Live SPY 2026-10-16 failure: expiry
+    2026-10-29 has rows with ALL-NaN
+    openInterest, so the raw metric functions
+    raise ValueError. The packet call site must
+    tolerate that ONE unusable expiry —
+    explicit nulls + metrics_unavailable flag —
+    while other expiries and whole-book fields
+    still compute."""
+    e_ok = "2026-10-16"
+    e_dead = "2026-10-29"
+    e_absent = "2027-01-01"  # in list, no rows
+
+    d_ok = pd.Timestamp(e_ok, tz="UTC")
+    d_dead = pd.Timestamp(e_dead, tz="UTC")
+
+    rows = []
+
+    # healthy expiry — grouped net gex is
+    # -1e5 @ 100 and +2e5 @ 110, so the
+    # material neg->pos crossing is 110
+    for st, t, oi, g in [
+        (100.0, "call", 500, -2e5),
+        (100.0, "put", 200, 1e5),
+        (110.0, "call", 300, 1e5),
+        (110.0, "put", 50, 1e5),
+    ]:
+        rows.append({
+            "strike": st,
+            "type": t,
+            "openInterest": oi,
+            "gex": g,
+            "impliedVolatility": 0.30,
+            "expiry": d_ok,
+        })
+
+    # dead expiry — every OI value missing
+    for st, t in [(100.0, "call"), (110.0, "put")]:
+        rows.append({
+            "strike": st,
+            "type": t,
+            "openInterest": np.nan,
+            "gex": np.nan,
+            "impliedVolatility": 0.30,
+            "expiry": d_dead,
+        })
+
+    df = pd.DataFrame(rows)
+
+    packet = build_ai_packet(
+        "SPY", df, 105.0,
+        [e_ok, e_dead, e_absent],
+    )
+
+    exs = {
+        e["expiry"]: e
+        for e in packet["market_snapshot"]["expiries"]
+    }
+
+    # --- healthy expiry is untouched ---
+    ok = exs[e_ok]
+    assert ok["metrics_unavailable"] is False
+    assert "data_quality" not in ok
+    dead_sub = df[df["expiry"] == d_dead]
+    assert ok["max_pain"] == _independent_max_pain(
+        df[df["expiry"] == d_ok]
+    )
+    assert ok["max_pain"] in {100.0, 110.0}
+    assert ok["max_pain_constrained"] in {
+        100.0, 110.0
+    }
+    assert ok["max_pain_candidate_band"] == [
+        0.7 * 105.0, 1.3 * 105.0
+    ]
+    assert ok["max_pain_band_fell_back"] is False
+    assert ok["gamma_flip"] == 110.0
+    assert ok["atm_iv"] == 0.30
+
+    # --- dead expiry: explicit nulls + flag,
+    #     never artifact strikes ---
+    dead = exs[e_dead]
+    assert dead["metrics_unavailable"] is True
+    assert dead["data_quality"] == "no_finite_oi"
+    for field in (
+        "max_pain",
+        "max_pain_constrained",
+        "max_pain_candidate_band",
+        "max_pain_band_fell_back",
+        "max_pain_band_boundary_hit",
+        "max_pain_selected_lowest_candidate",
+        "max_pain_selected_highest_candidate",
+        "gamma_flip",
+    ):
+        assert dead[field] is None, field
+    # the expiry's strikes are still exported
+    # (OI collapsed to 0 — the documented
+    # conflation), only the metrics are nulled
+    assert len(dead["strikes"]) == 2
+    assert all(
+        s["open_interest"] == 0
+        for s in dead["strikes"]
+    )
+    assert dead["atm_iv"] == 0.30
+
+    # --- expiry listed but absent from the
+    #     chain: same honest nulls ---
+    absent = exs[e_absent]
+    assert absent["metrics_unavailable"] is True
+    assert absent["data_quality"] == "no_finite_oi"
+    assert absent["max_pain"] is None
+    assert absent["gamma_flip"] is None
+    assert absent["strikes"] == []
+    assert absent["atm_iv"] is None
+
+    # --- whole-book fields still compute ---
+    snap = packet["market_snapshot"]
+    assert snap["spot"] == 105.0
+    assert snap["total_net_gex"] == 100000.0
+    assert snap["nearest_gamma_flip"] == 110.0
+
+    # --- the raw functions still fail loudly
+    #     on direct misuse ---
+    with pytest.raises(ValueError):
+        compute_max_pain(dead_sub)
+    with pytest.raises(ValueError):
+        compute_max_pain_constrained(
+            dead_sub, spot=105.0
+        )
+
+
+def test_metrics_unavailable_differs_from_no_flip():
+    """metrics_unavailable flags a payout-data
+    failure, NOT merely a missing crossing: an
+    expiry with finite OI but all-NaN gex has
+    usable metrics (max_pain real) AND a null
+    gamma_flip — both honest, distinct states."""
+    exp = "2026-10-16"
+    exp_dt = pd.Timestamp(exp, tz="UTC")
+
+    df = pd.DataFrame({
+        "strike": [100.0, 110.0, 100.0, 110.0],
+        "type": ["call", "call", "put", "put"],
+        "openInterest": [500, 300, 200, 50],
+        "gex": [np.nan] * 4,
+        "impliedVolatility": [0.30] * 4,
+        "expiry": [exp_dt] * 4,
+    })
+
+    packet = build_ai_packet("TEST", df, 105.0, [exp])
+    e = packet["market_snapshot"]["expiries"][0]
+
+    # payout metrics computable -> available
+    assert e["metrics_unavailable"] is False
+    assert "data_quality" not in e
+    assert e["max_pain"] == _independent_max_pain(df)
+    # but no material crossing -> null flip,
+    # which is a DIFFERENT state from
+    # metrics_unavailable
+    assert e["gamma_flip"] is None
+
+
 def test_meta_data_quality_notes_oi_conflation():
     """meta.data_quality must document that the
     exported OI fields may conflate true-zero
