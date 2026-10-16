@@ -220,5 +220,102 @@
       }
     ],
     "result": null
+  },
+  {
+    "id": "F3-T1",
+    "title": "Fix true max_pain root cause (NaN OI argmin hijack) + band-edge selection flag",
+    "role": "executor",
+    "status": "in_progress",
+    "depends_on": [
+      "F2-T3"
+    ],
+    "assigned_to": "B",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "AGENTS.md"
+    ],
+    "output_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py"
+    ],
+    "scope": "External review round 3 caught that band removal alone cannot explain max_pain 225-235 -> 435, since the original compute_max_pain was ALREADY the canonical unconstrained payout argmin. ORCHESTRATOR FORENSICS (verified): reconstructing the TSM fixture df with exported OI=0 treated as NaN makes the ORIGINAL algorithm return exactly the reported artifacts 225/230/235 on expiries 10-23/10-30/11-27. ROOT CAUSE: yfinance emits NaN openInterest on dead strikes; pain sums become NaN; np.argmin silently returns the FIRST NaN index = lowest strike. Packet export collapsed NaN->0 via groupby().sum(), hiding it in the fixture.\n\nREQUIRED:\n1. compute_max_pain / compute_max_pain_constrained (and _payout_pain): exclude rows with nonfinite openInterest (and nonfinite strike) BEFORE the payout loop — document that a zero/nonfinite OI row cannot anchor a minimum. Add a regression test: df containing NaN-OI rows must return the true argmin computed independently, NOT the first-NaN (lowest) strike. State in test docstring that this reproduces the original 225/230/235 artifact mechanism.\n2. Band-edge flag (minor concern): band_boundary_hit uses literal strike==edge equality, which misses constraint-driven endpoint selection when no listed strike equals the band edge. Add flag(s) distinguishing literal edge equality from selection of the lowest/highest ELIGIBLE candidate (e.g. 'selected_lowest_candidate'/'selected_highest_candidate' or a single 'edge_hit' semantics covering both). Add a test whose band endpoints fall BETWEEN listed strikes.\n3. Provenance: add a meta.data_quality note that exported OI may conflate true-zero and missing(NaN-collapsed-to-0) rows.\n4. Keep compute_gamma_flip semantics from F2 unchanged; nonfinite handling already present — make sure gex max_abs guard also handles all-NaN->dropped edge.\nRULES: offline only, no yfinance/network, no full-script runs, minimal diffs, backward-compatible signatures.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "pytest",
+        "command": "python -m pytest tests/ -q",
+        "expected": "all pass incl. NaN-OI regression reproducing original artifact mechanism + between-strikes band-edge test"
+      },
+      {
+        "id": "AC-2",
+        "check": "no_network_in_tests",
+        "command": "findstr /s /m \"yfinance\" tests\\*.py",
+        "expected_exit": 1
+      },
+      {
+        "id": "AC-3",
+        "check": "probe",
+        "command": "python devin_blackboard/probe_f3_t1.py",
+        "expected": "reconstructed NaN-OI df yields true argmin not lowest strike"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F3-T2",
+    "title": "Adversarial review of F3",
+    "role": "challenger",
+    "status": "todo",
+    "depends_on": [
+      "F3-T1"
+    ],
+    "assigned_to": "C",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Adversarially review F3-T1: NaN-OI exclusion must not alter results on clean data; argmin tie behavior documented; band-edge flags distinguish literal edge equality vs lowest/highest eligible candidate and empty-band fallback; provenance note accurate; mutation-check the NaN regression test; scope/diff audit; zero network. Do NOT edit source/tests. Verdict APPROVED or CONCERNS with evidence.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "review",
+        "expected": "APPROVED or blocking findings with evidence"
+      }
+    ],
+    "result": null
+  },
+  {
+    "id": "F3-T3",
+    "title": "Critic gate F3",
+    "role": "critic",
+    "status": "todo",
+    "depends_on": [
+      "F3-T2"
+    ],
+    "assigned_to": "D",
+    "input_files": [
+      "GexDashboard.py",
+      "tests/test_gex_metrics.py",
+      "tests/fixtures/TSM_ai_packet.json",
+      "devin_blackboard/STATE.md"
+    ],
+    "output_files": [
+      "devin_blackboard/"
+    ],
+    "scope": "Independent final gate. Re-run pytest. Independently verify: (a) on the TSM fixture rebuilt df (zeros as-is) canonical max_pain still returns 435/450/445/460/470/420/450 per expiry; (b) a df with NaN OI returns the same argmin as the NaN-dropped independent payout calc (not the lowest strike); (c) band-edge flags correct when endpoints fall between strikes; (d) diff scope clean. Report concrete numbers + PASS/FAIL.",
+    "acceptance_criteria": [
+      {
+        "id": "AC-1",
+        "check": "independent_verification",
+        "expected": "PASS with independently computed numbers"
+      }
+    ],
+    "result": null
   }
 ]
