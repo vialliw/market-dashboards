@@ -52,3 +52,25 @@ Evidence map:
 [2026-10-16] B | DONE F1-T1 | gamma_flip+max_pain spot-aware fix, stale_iv flag; 11 offline tests, 5/5 AC PASS | files: GexDashboard.py, tests/test_gex_metrics.py, tests/conftest.py
 
 [2026-10-16T09:52:17.022925+00:00] [CHALLENGER] claimed F1-T2
+[2026-10-16T09:56:58.262226+00:00] [CHALLENGER] completed F1-T2 -> APPROVED. 11/11 tests + both ACs pass; mutation probe (pre-fix fns on TSM fixture) confirms tests non-vacuous (old=370/230/250/310 vs new 430/432.5/442.5/460; noise-df old=170 vs new=None); multi-crossing nearest-spot correct (10-23 [432.5,442.5,480,500]->432.5); materiality filter cannot empty; max_pain band fallback+ties OK; stale_iv keeps OI/GEX, boundary >2.0 strict, meta note present; scope audit clean; no network in tests. Minor notes: np.int64 return for int-strike df (wrapped by float() in packet path); flip-at-0 masked by truthiness check; empty-df max_pain ValueError pre-existing.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "pytest_full_suite",
+    "command": "python -m pytest tests/ -q",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": "...........                                                              [100%]\n11 passed in 4.30s\n"
+  },
+  {
+    "id": "AC-2",
+    "check": "module_imports",
+    "command": "python -c \"import GexDashboard\"",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]

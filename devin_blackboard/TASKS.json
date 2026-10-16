@@ -55,7 +55,7 @@
     "id": "F1-T2",
     "title": "Challenger: adversarial review of F1-T1 gamma_flip/max_pain fix",
     "role": "challenger",
-    "status": "in_progress",
+    "status": "done",
     "depends_on": [
       "F1-T1"
     ],
