@@ -1,5 +1,5 @@
 # Project State — Canonical Source
-Last Updated: 2026-10-16 (F3-T2 done by Agent C — APPROVED; awaiting F3-T3 critic)
+Last Updated: 2026-10-16 (F3-T3 done by Agent D — PASS; cycle F3 CLOSED)
 Current Branch: main
 
 ## Repo
@@ -152,9 +152,44 @@ tests must use tests/fixtures/TSM_ai_packet.json.
       string "yfinance").
   Non-blocking notes below.
 
+- F3-T3 (D, done): critic gate PASS. Probe
+  devin_blackboard/probe_f3_t3.py: 32/32 checks.
+  pytest 24/24 (5.01s); zero network in tests (only
+  fixture meta.source string "yfinance").
+  (A) Clean zeros-as-is dfs: canonical compute_max_pain ==
+  independent plain-Python argmin ==
+  435/450/445/460/470/420/450 on all 7 TSM expiries —
+  unchanged from F2.
+  (B) Zeros-as-NaN dfs: current functions == independent
+  finite-only argmin on all 7 expiries (never the lowest
+  listed strike); simulated PRE-F3 naive algorithm (no
+  finite filter) reproduces the exact reported artifacts
+  225/230/235 on 10-23/10-30/11-27 (lowest listed
+  strike = np.argmin first-NaN). Expiry 10-23: pre-F3 ->
+  225 (artifact), current -> 450 (true argmin);
+  constrained variant agrees (450).
+  (C) Band-edge flags: band [147,273] between listed
+  strikes -> argmin on lowest eligible (150) fires
+  selected_lowest only, argmin on highest eligible (250)
+  fires selected_highest only, boundary_hit False in
+  both; literal edge equality (argmin=140=band edge)
+  fires band_boundary_hit + selected_lowest.
+  (D) Fresh build_ai_packet: max_pain +
+  max_pain_constrained + candidate_band + fell_back +
+  boundary_hit + selected_lowest/highest all emitted as
+  bools; stale-IV strike carries iv:null +
+  raw_implied_volatility:3.5 + stale_iv:true with OI/GEX
+  preserved; NaN-OI strike exports OI=0 (conflation
+  demonstrated, matching data_quality note);
+  meta.data_quality + metric_definitions document the
+  flags and the exclusion.
+  (E) Diff audit 5a230fc..HEAD: only GexDashboard.py +
+  tests/test_gex_metrics.py + devin_blackboard/*; tree
+  clean. Cycle F3 CLOSED.
+
 ## Ready
 
-(none — F3-T3 critic gate is next)
+(none — cycle F3 closed; awaiting orchestrator)
 
 ## Notes for reviewers
 

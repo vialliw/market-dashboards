@@ -229,4 +229,20 @@ Evidence map:
 ]
 [2026-10-16] C | DONE F3-T2 | APPROVED. probe_f3_t2.py 40/40 checks PASS: clean-data A/B vs pre-F3 commit identical on all 7 TSM expiries; one-sided NaN drops only that row; NaN-strike/inf-OI excluded; all-NaN/empty -> loud ValueError; tie -> lowest strike; band-edge flags correct (driven lowest/highest between strikes, literal edge -> boundary_hit+selected, fell_back/None/NaN-spot suppressed, coincidental endpoint literal); gamma_flip gex filter covers NaN path; 4 mutants caught (finite-filter revert -> artifact 225 + regression test fails, payout-only-filter -> NaN hijack, flag-swap, fell_back guard); packet emits bool flags + conflation note verified; pytest 24/24; diff scope clean; zero network | files: devin_blackboard/probe_f3_t2.py, devin_blackboard/STATE.md, devin_blackboard/EVENTS.log
 
-[2026-10-16T11:15:04.792271+00:00] [CRITIC] claimed F3-T3
+[2026-10-16T11:15:04.792271+00:00] [CRITIC] claimed F3-T3[2026-10-16] D | F3-T3 IN PROGRESS -> critic gate probes run
+
+[2026-10-16] D | DONE F3-T3 | critic gate PASS. pytest 24/24 (5.01s); zero network in tests (only fixture meta.source string). probe_f3_t3.py 32/32: (A) clean zeros-as-is dfs -> compute_max_pain == independent plain-Python argmin == 435/450/445/460/470/420/450 on all 7 TSM expiries (unchanged from F2); (B) zeros-as-NaN dfs -> current fns == independent finite-only argmin on all 7 (never lowest strike); simulated pre-F3 naive algorithm reproduces exact artifacts 225/230/235 on 10-23/10-30/11-27 (np.argmin first-NaN = lowest listed strike); 10-23: pre-F3 -> 225, current -> 450, constrained agrees; (C) band-edge flags: band [147,273] between listed strikes -> lowest-eligible argmin 150 fires selected_lowest only / highest-eligible argmin 250 fires selected_highest only, boundary_hit False; literal edge argmin=140=band edge -> boundary_hit + selected_lowest; (D) fresh build_ai_packet emits max_pain + max_pain_constrained + candidate_band + fell_back + boundary_hit + selected_lowest/highest as bools; stale-IV strike has iv:null + raw_implied_volatility:3.5 + stale_iv:true (OI/GEX kept); NaN-OI strike exports OI=0 (conflation consistent with data_quality note); meta notes accurate; (E) diff audit 5a230fc..HEAD: only GexDashboard.py + tests/test_gex_metrics.py + devin_blackboard/*; tree clean. Cycle F3 CLOSED.
+
+[2026-10-16T11:18:01.490357+00:00] [CRITIC] completed F3-T3 -> PASS: pytest 24/24; zero network in tests. probe_f3_t3.py 32/32 independent checks: clean dfs -> argmin 435/450/445/460/470/420/450 all 7 expiries (== independent recompute, unchanged from F2); zeros-as-NaN dfs -> current fns return true finite-only argmin, pre-F3 naive simulation reproduces exact artifacts 225/230/235 on 10-23/10-30/11-27 (10-23: pre-F3=225 vs current=450); band-edge flags verified (between-strikes lowest+highest fire w/o boundary_hit; literal edge -> boundary_hit); packet emits all fields as bools + raw_implied_volatility provenance + OI-conflation note; diff 5a230fc..HEAD only source+tests+blackboard; tree clean. Cycle F3 CLOSED.
+Evidence map:
+[
+  {
+    "id": "AC-1",
+    "check": "independent_verification",
+    "command": "",
+    "expected_exit": 0,
+    "actual_exit": 0,
+    "passed": true,
+    "output": ""
+  }
+]
